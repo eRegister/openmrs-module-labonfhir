@@ -15,7 +15,9 @@ import ca.uhn.fhir.rest.param.TokenParam;
 import org.apache.commons.lang3.StringUtils;
 import org.hl7.fhir.instance.model.api.IBaseResource;
 import org.hl7.fhir.r4.model.Bundle;
+import org.hl7.fhir.r4.model.Reference;
 import org.hl7.fhir.r4.model.Resource;
+import org.hl7.fhir.r4.model.ServiceRequest;
 import org.hl7.fhir.r4.model.Task;
 import org.openmrs.Encounter;
 import org.openmrs.api.APIException;
@@ -24,6 +26,8 @@ import org.openmrs.api.context.Daemon;
 import org.openmrs.event.EventListener;
 import org.openmrs.module.DaemonToken;
 import org.openmrs.module.fhir2.api.FhirLocationService;
+import org.openmrs.module.fhir2.api.FhirObservationService;
+import org.openmrs.module.fhir2.api.FhirServiceRequestService;
 import org.openmrs.module.fhir2.api.FhirTaskService;
 import org.openmrs.module.fhir2.api.util.FhirUtils;
 import org.openmrs.module.labonfhir.LabOnFhirConfig;
@@ -55,6 +59,13 @@ public abstract class LabCreationListener implements EventListener {
 
 	@Autowired
 	private FhirTaskService fhirTaskService;
+
+	//The two services below are addded so that we can include supportinginfo obs linked in the service request
+	@Autowired
+	private FhirServiceRequestService fhirServiceRequestService;
+
+	@Autowired
+	private FhirObservationService fhirObservationService;
 
 	public DaemonToken getDaemonToken() {
 		return daemonToken;
@@ -96,6 +107,27 @@ public abstract class LabCreationListener implements EventListener {
 		if (!task.getLocation().isEmpty() && config.getLabUpdateTriggerObject().equals("Encounter")) {
 			labResources.add(fhirLocationService.get(FhirUtils.referenceToId(task.getLocation().getReference()).get()));
 		}
+    
+		// Add ART Regimen, Pregnancy status, etc. Obs linked on ServiceRequest
+        //(1) get task based on -- servicerequest
+		//(2) then get supporting info
+		//(3) reference to id for each item
+		//(4) Pull obs, add to lab bundle
+		if(!task.getBasedOn().isEmpty()){
+			List <Reference> taskReferences = task.getBasedOn();
+			for(Reference taskReference : taskReferences){
+				if(taskReference.getType() == "ServiceRequest"){
+					ServiceRequest serviceRequest = fhirServiceRequestService.get(FhirUtils.referenceToId(taskReference.getReference()).get());
+					List<Reference> serviceRequestReferences = serviceRequest.getSupportingInfo();
+                    for(Reference serviceRequestReference: serviceRequestReferences){
+						if(!FhirUtils.referenceToId(serviceRequestReference.getReference()).get().equals("null")){ //null for resources that don't exist
+							labResources.add(fhirObservationService.get(FhirUtils.referenceToId(serviceRequestReference.getReference()).get()));
+						}
+					}
+				}
+			}
+		}
+
 		for (IBaseResource r : labResources) {
 			Resource resource = (Resource) r;
 			Bundle.BundleEntryComponent component = transactionBundle.addEntry();
