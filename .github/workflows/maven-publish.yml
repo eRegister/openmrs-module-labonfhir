@@ -1,0 +1,38 @@
+name: Build and Package OpenMRS FHIR2 Module
+
+on:
+  push:
+    branches: [ "main" ]
+  pull_request:
+    branches: [ "main" ]
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v2
+    - name: Set up Java
+      uses: actions/setup-java@v1
+      with:
+        java-version: '1.8'
+    - name: Build OpenMRS labonfhir module
+      run: |
+        git status 
+        mvn clean package -DskipTests=true
+    - name: Publish OpenMRS labonfhir module omod to omod repo
+      run: |
+        cd omod/target
+        mkdir to_publish
+        cp labonfhir-1.3.0-SNAPSHOT.omod to_publish/labonfhir-1.3.0-SNAPSHOT$(date +_%d%m%Y).omod
+        cd to_publish
+        ls -al
+        git config --global user.email "la.mphatsi@gmail.com"
+        git config --global user.name "lmphatsi"
+        git config --global init.defaultBranch "main"
+        git init
+        git branch -m main
+        git add .
+        git commit -m "release openmrs-labonfhir-module omod "date
+        git remote add github https://${{ secrets.LABONFHIR_OMOD_REPO_TOKEN }}@github.com/lmphatsi/openmrs-module-labonfhir-omod.git
+        git push -f github main
