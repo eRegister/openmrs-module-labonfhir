@@ -24,6 +24,8 @@ import org.openmrs.api.context.Daemon;
 import org.openmrs.event.EventListener;
 import org.openmrs.module.DaemonToken;
 import org.openmrs.module.fhir2.api.FhirLocationService;
+import org.openmrs.module.fhir2.api.FhirObservationService;
+import org.openmrs.module.fhir2.api.FhirServiceRequestService;
 import org.openmrs.module.fhir2.api.FhirTaskService;
 import org.openmrs.module.fhir2.api.util.FhirUtils;
 import org.openmrs.module.labonfhir.LabOnFhirConfig;
@@ -55,6 +57,13 @@ public abstract class LabCreationListener implements EventListener {
 
 	@Autowired
 	private FhirTaskService fhirTaskService;
+
+	//The two services below are addded so that we can include supportinginfo obs linked in the service request
+	@Autowired
+	private FhirServiceRequestService fhirServiceRequestService;
+
+	@Autowired
+	private FhirObservationService fhirObservationService;
 
 	public DaemonToken getDaemonToken() {
 		return daemonToken;
