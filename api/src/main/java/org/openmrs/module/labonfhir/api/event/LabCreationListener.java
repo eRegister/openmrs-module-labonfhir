@@ -3,6 +3,8 @@ package org.openmrs.module.labonfhir.api.event;
 import javax.jms.JMSException;
 import javax.jms.MapMessage;
 import javax.jms.Message;
+
+import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.List;
 
@@ -115,13 +117,18 @@ public abstract class LabCreationListener implements EventListener {
 		//(4) Pull obs, add to lab bundle
 		if(!task.getBasedOn().isEmpty()){
 			List <Reference> taskReferences = task.getBasedOn();
+			List <String> processedReferences = new ArrayList<String>();
 			for(Reference taskReference : taskReferences){
 				if(taskReference.getType() == "ServiceRequest"){
 					ServiceRequest serviceRequest = fhirServiceRequestService.get(FhirUtils.referenceToId(taskReference.getReference()).get());
 					List<Reference> serviceRequestReferences = serviceRequest.getSupportingInfo();
                     for(Reference serviceRequestReference: serviceRequestReferences){
-						if(!FhirUtils.referenceToId(serviceRequestReference.getReference()).get().equals("null")){ //null for resources that don't exist
-							labResources.add(fhirObservationService.get(FhirUtils.referenceToId(serviceRequestReference.getReference()).get()));
+						String ObsId = FhirUtils.referenceToId(serviceRequestReference.getReference()).get();
+						if(!ObsId.equals("null") && !processedReferences.contains(ObsId)){ //exclude null (for resources that don't exist) and avoid re-adds to the bundle
+							if(serviceRequestReference.getType() == "Observation"){
+								labResources.add(fhirObservationService.get(ObsId));
+								processedReferences.add(ObsId);
+							}
 						}
 					}
 				}
