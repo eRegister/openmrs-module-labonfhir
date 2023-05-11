@@ -142,6 +142,7 @@ public class FetchTaskUpdates extends AbstractTask implements ApplicationContext
 		Reference encounterReference = openmrsTask.getEncounter();
 		List<Reference> basedOn = openmrsTask.getBasedOn();
 		List<String> allExistingLoincCodes = new ArrayList<>();
+		//allExistingLoincCodes list contains loinc codes of DiagReports already in OpenMRS (i.e. processed)
 		Boolean taskOutPutUpdated = false;
 		// openmrsTask.getOutput().stream().map(ouput -> ouput.getType().getCoding());
 		openmrsTask.getOutput().forEach(out -> {
@@ -151,6 +152,7 @@ public class FetchTaskUpdates extends AbstractTask implements ApplicationContext
 						allExistingLoincCodes.add(coding.getCode());
 					});
 		});
+
 		if (!output.isEmpty()) {
 			// Save each output entry
 			for (Iterator outputRefI = output.stream().iterator(); outputRefI.hasNext();) {
@@ -168,6 +170,7 @@ public class FetchTaskUpdates extends AbstractTask implements ApplicationContext
 				Coding diagnosticReportCode = diagnosticReport.getCode().getCodingFirstRep();
 				if (diagnosticReportCode.getSystem().equals(LOINC_SYSTEM)) {
 					List<Reference> results = new ArrayList<>();
+					
 					if (!allExistingLoincCodes.contains(diagnosticReportCode.getCode())) {
 						// save Observation
 						for (Bundle.BundleEntryComponent entry : diagnosticReportBundle.getEntry()) {
