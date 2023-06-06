@@ -29,6 +29,7 @@ import org.openmrs.api.EncounterService;
 import org.openmrs.api.context.Daemon;
 import org.openmrs.event.EventListener;
 import org.openmrs.module.DaemonToken;
+import org.openmrs.module.fhir2.api.FhirDiagnosticReportService;
 import org.openmrs.module.fhir2.api.FhirLocationService;
 import org.openmrs.module.fhir2.api.FhirObservationService;
 import org.openmrs.module.fhir2.api.FhirServiceRequestService;
@@ -64,12 +65,15 @@ public abstract class LabCreationListener implements EventListener {
 	@Autowired
 	private FhirTaskService fhirTaskService;
 
-	//The two services below are addded so that we can include supportinginfo obs linked in the service request
+	//The three services below are addded so that we can include supportinginfo obs linked in the service request
 	@Autowired
 	private FhirServiceRequestService fhirServiceRequestService;
 
 	@Autowired
 	private FhirObservationService fhirObservationService;
+
+	@Autowired
+	private FhirDiagnosticReportService fhirDiagnosticReportService;
 
 	public DaemonToken getDaemonToken() {
 		return daemonToken;
@@ -116,7 +120,7 @@ public abstract class LabCreationListener implements EventListener {
 			labResources.add(fhirLocationService.get(FhirUtils.referenceToId(task.getLocation().getReference()).get()));
 		}
     
-		// Add ART Regimen, Pregnancy status, etc. Obs linked on ServiceRequest
+		// Add ART Regimen, Pregnancy status, etc. Obs & DiagnosticReport (including Obs linked in DiagReport) linked on ServiceRequest
         //(1) get task based on -- servicerequest
 		//(2) then get supporting info
 		//(3) reference to id for each item
@@ -129,11 +133,27 @@ public abstract class LabCreationListener implements EventListener {
 					ServiceRequest serviceRequest = fhirServiceRequestService.get(FhirUtils.referenceToId(taskReference.getReference()).get());
 					List<Reference> serviceRequestReferences = serviceRequest.getSupportingInfo();
                     for(Reference serviceRequestReference: serviceRequestReferences){
-						String ObsId = FhirUtils.referenceToId(serviceRequestReference.getReference()).get();
-						if(!ObsId.equals("null") && !processedReferences.contains(ObsId)){ //exclude null (for resources that don't exist) and avoid re-adds to the bundle
+						String resourceId = FhirUtils.referenceToId(serviceRequestReference.getReference()).get();
+						if(!resourceId.equals("null") && !processedReferences.contains(resourceId)){ //exclude null (for resources that don't exist) and avoid re-adds to the bundle
 							if(serviceRequestReference.getType() == "Observation"){
-								labResources.add(fhirObservationService.get(ObsId));
-								processedReferences.add(ObsId);
+								labResources.add(fhirObservationService.get(resourceId));
+								processedReferences.add(resourceId);
+							}
+							else if(serviceRequestReference.getType() == "DiagnosticReport"){
+								//labResources.add(fhirDiagnosticReportService.get(resourceId));
+								TokenAndListParam diagReportUuid = new TokenAndListParam().addAnd(new TokenParam(resourceId));
+								HashSet<Include> includes_ = new HashSet<>();
+								includes_.add(new Include("DiagnosticReport:result"));
+								IBundleProvider diagReportBundle = fhirDiagnosticReportService.searchForDiagnosticReports(null, null, null, null, null, diagReportUuid, null, null, includes_);
+                                List <IBaseResource> diagReportResources = diagReportBundle.getAllResources();
+								for (IBaseResource diagResource : diagReportResources){
+									labResources.add(diagResource);
+								}
+								processedReferences.add(resourceId);
+							}
+							else{
+								log.error("How did we get here?? **************************");
+								log.error("Found an unhandled reference ... expecting an Observation or DiagnosticReport reference.");
 							}
 						}
 					}
