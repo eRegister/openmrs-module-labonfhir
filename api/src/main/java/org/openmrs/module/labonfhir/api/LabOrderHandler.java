@@ -6,7 +6,6 @@ import java.util.List;
 import java.util.Optional;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.stream.Collectors;
-
 import org.hl7.fhir.r4.model.Reference;
 import org.hl7.fhir.r4.model.Task;
 import org.openmrs.Encounter;
@@ -17,6 +16,7 @@ import org.openmrs.api.db.DAOException;
 import org.openmrs.module.fhir2.FhirConstants;
 import org.openmrs.module.fhir2.api.FhirTaskService;
 import org.openmrs.module.labonfhir.LabOnFhirConfig;
+import org.openmrs.module.labonfhir.api.event.OrderCreationListener;
 import org.openmrs.module.labonfhir.api.fhir.OrderCreationException;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Component;
@@ -34,17 +34,35 @@ public class LabOrderHandler {
 		//TDO: MAKE THIS A GLOBAL CONFIG
 		final String REQUIRED_TESTS_UUIDS = config.getOrderTestUuids(); // GeneXpert
 		// Exit if Test Order doesn't contain required tests
+
+		/* -- Original code re-written to allow orders whose concept uuids are in the list
 		boolean mappedTestsExist = false;
 		for (Obs obs : order.getEncounter().getObs()) {
+			log.error("Order obs concept uuid: "+obs.getConcept().getUuid());
 			if (Arrays.stream(REQUIRED_TESTS_UUIDS.split(",")).anyMatch(s -> s.equals(obs.getConcept().getUuid())
 					|| (obs.getValueCoded() != null && s.equals(obs.getValueCoded().getUuid())))) {
 				mappedTestsExist = true;
+				log.error("VL was found in the list of tests to sync to LIS ************************");
 			}
 		}
 
 		if (!mappedTestsExist) {
 			return null;
 		}
+		*/
+
+		//New logic
+		boolean mappedTestsExist = false;
+		
+		
+		if (Arrays.stream(REQUIRED_TESTS_UUIDS.split(",")).anyMatch(s -> s.equals(order.getConcept().getUuid()))) {
+				mappedTestsExist = true;
+		}
+	
+		if (!mappedTestsExist) {
+			return null;
+		}
+
 		// Create References
 		List<Reference> basedOnRefs = Collections.singletonList(
 				newReference(order.getUuid(), FhirConstants.SERVICE_REQUEST));
