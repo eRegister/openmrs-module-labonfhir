@@ -121,6 +121,6 @@
 	<globalProperty>
 		<property>@MODULE_ID@.labUpdateTriggerObject</property>
 		<description>The OpenMRS object type that should trigger LIS synchronization - either Encounter or Order.</description>
-		<defaultValue>Encounter</defaultValue>
+		<defaultValue>Order</defaultValue>
 	</globalProperty>
 </module>
