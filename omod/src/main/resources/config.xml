@@ -32,6 +32,7 @@
 	<require_modules>
 		<require_module>org.openmrs.event</require_module>
 		<require_module>org.openmrs.module.fhir2</require_module>
+		<require_module >org.openmrs.module.webservices.rest</require_module>
 	</require_modules>
 	
 	<!-- Internationalization -->
@@ -122,5 +123,17 @@
 		<property>@MODULE_ID@.labUpdateTriggerObject</property>
 		<description>The OpenMRS object type that should trigger LIS synchronization - either Encounter or Order.</description>
 		<defaultValue>Order</defaultValue>
+	</globalProperty>
+
+	<globalProperty>
+		<property>@MODULE_ID@.addObsAsTaskInput</property>
+		<description>Allows Adding Obs as Task Input</description>
+		<defaultValue>false</defaultValue>
+	</globalProperty>
+
+	<globalProperty>
+		<property>@MODULE_ID@.filterOrderBytestUuids</property>
+		<description>Allows filtering Oders by Test Uuuids</description>
+		<defaultValue>true</defaultValue>
 	</globalProperty>
 </module>

@@ -1,7 +1,5 @@
 package org.openmrs.module.labonfhir.api.event;
 
-import javax.jms.JMSException;
-import javax.jms.MapMessage;
 import javax.jms.Message;
 
 import java.util.ArrayList;
@@ -14,18 +12,13 @@ import ca.uhn.fhir.rest.api.server.IBundleProvider;
 import ca.uhn.fhir.rest.client.api.IGenericClient;
 import ca.uhn.fhir.rest.param.TokenAndListParam;
 import ca.uhn.fhir.rest.param.TokenParam;
-import org.apache.commons.lang3.StringUtils;
 import org.hl7.fhir.r4.model.Identifier;
-import org.hl7.fhir.instance.model.api.IBaseBundle;
 import org.hl7.fhir.instance.model.api.IBaseResource;
 import org.hl7.fhir.r4.model.Bundle;
 import org.hl7.fhir.r4.model.Reference;
 import org.hl7.fhir.r4.model.Resource;
 import org.hl7.fhir.r4.model.ServiceRequest;
 import org.hl7.fhir.r4.model.Task;
-import org.openmrs.Encounter;
-import org.openmrs.api.APIException;
-import org.openmrs.api.EncounterService;
 import org.openmrs.api.context.Daemon;
 import org.openmrs.event.EventListener;
 import org.openmrs.module.DaemonToken;
@@ -36,8 +29,8 @@ import org.openmrs.module.fhir2.api.FhirServiceRequestService;
 import org.openmrs.module.fhir2.api.FhirTaskService;
 import org.openmrs.module.fhir2.api.util.FhirUtils;
 import org.openmrs.module.labonfhir.LabOnFhirConfig;
-import org.openmrs.module.labonfhir.api.LabOrderHandler;
-import org.openmrs.module.labonfhir.api.fhir.OrderCreationException;
+import org.openmrs.module.labonfhir.api.model.FailedTask;
+import org.openmrs.module.labonfhir.api.service.LabOnFhirService;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -50,6 +43,7 @@ public abstract class LabCreationListener implements EventListener {
 	private DaemonToken daemonToken;
 
 	@Autowired
+	@Qualifier("labOrderFhirClient")
 	private IGenericClient client;
 
 	@Autowired
@@ -68,12 +62,14 @@ public abstract class LabCreationListener implements EventListener {
 	//The three services below are addded so that we can include supportinginfo obs linked in the service request
 	@Autowired
 	private FhirServiceRequestService fhirServiceRequestService;
-
 	@Autowired
 	private FhirObservationService fhirObservationService;
 
 	@Autowired
 	private FhirDiagnosticReportService fhirDiagnosticReportService;
+	
+	@Autowired
+	private LabOnFhirService labOnFhirService ;
 
 	public DaemonToken getDaemonToken() {
 		return daemonToken;
@@ -99,7 +95,7 @@ public abstract class LabCreationListener implements EventListener {
 
 	public abstract void processMessage(Message message);
 
-	private Bundle createLabBundle(Task task) {
+	public Bundle createLabBundle(Task task) {
 		TokenAndListParam uuid = new TokenAndListParam().addAnd(new TokenParam(task.getIdElement().getIdPart()));
 		HashSet<Include> includes = new HashSet<>();
 		includes.add(new Include("Task:patient"));
@@ -176,7 +172,13 @@ public abstract class LabCreationListener implements EventListener {
 		if (task != null) {
 			if (config.getActivateFhirPush()) {
 				Bundle labBundle = createLabBundle(task);
-				client.transaction().withBundle(labBundle).execute();
+				try {
+					client.transaction().withBundle(labBundle).execute();
+				}
+				catch (Exception e) {
+					saveFailedTask(task.getIdElement().getIdPart(), e.getMessage());
+					log.error("Failed to send Task with UUID " + task.getIdElement().getIdPart(), e);
+				}
 				log.debug(ctx.newJsonParser().setPrettyPrint(true).encodeResourceToString(labBundle));
 			}
 		}
@@ -227,5 +229,12 @@ public abstract class LabCreationListener implements EventListener {
 			updatedLabResources = labResources;
 		}
 		return updatedLabResources;
+	}
+	private void saveFailedTask(String taskUuid ,String error) {
+		FailedTask failedTask = new FailedTask();
+		failedTask.setError(error);
+		failedTask.setIsSent(false);
+		failedTask.setTaskUuid(taskUuid);
+		labOnFhirService.saveOrUpdateFailedTask(failedTask);
 	}
 }
