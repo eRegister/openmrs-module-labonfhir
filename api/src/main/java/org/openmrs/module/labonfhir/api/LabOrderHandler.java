@@ -1,12 +1,13 @@
 package org.openmrs.module.labonfhir.api;
 
+import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
 import java.util.List;
 import java.util.Optional;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.stream.Collectors;
-
+import org.hl7.fhir.r4.model.Observation;
 import org.hl7.fhir.r4.model.Reference;
 import org.hl7.fhir.r4.model.Task;
 import org.openmrs.Encounter;
@@ -15,8 +16,10 @@ import org.openmrs.Obs;
 import org.openmrs.Order;
 import org.openmrs.api.db.DAOException;
 import org.openmrs.module.fhir2.FhirConstants;
+import org.openmrs.module.fhir2.api.FhirObservationService;
 import org.openmrs.module.fhir2.api.FhirTaskService;
 import org.openmrs.module.labonfhir.LabOnFhirConfig;
+import org.openmrs.module.labonfhir.api.event.OrderCreationListener;
 import org.openmrs.module.labonfhir.api.fhir.OrderCreationException;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Component;
@@ -30,20 +33,53 @@ public class LabOrderHandler {
 	@Autowired
 	private FhirTaskService taskService;
 
+	@Autowired
+	private FhirObservationService observationService;
+
 	public Task createOrder(Order order) throws OrderCreationException {
 		//TDO: MAKE THIS A GLOBAL CONFIG
 		final String REQUIRED_TESTS_UUIDS = config.getOrderTestUuids(); // GeneXpert
 		// Exit if Test Order doesn't contain required tests
+
+		/* -- Original code re-written to allow orders whose concept uuids are in the list
 		boolean mappedTestsExist = false;
 		for (Obs obs : order.getEncounter().getObs()) {
+			log.error("Order obs concept uuid: "+obs.getConcept().getUuid());
 			if (Arrays.stream(REQUIRED_TESTS_UUIDS.split(",")).anyMatch(s -> s.equals(obs.getConcept().getUuid())
 					|| (obs.getValueCoded() != null && s.equals(obs.getValueCoded().getUuid())))) {
 				mappedTestsExist = true;
+				log.error("VL was found in the list of tests to sync to LIS ************************");
 			}
 		}
 
+		if (!mappedTestsExist && config.filterOrderByTestUuuids()) {
+			return null;
+		}
+		*/
+
+		//New logic
+		boolean mappedTestsExist = false;
+		
+		
+		if (Arrays.stream(REQUIRED_TESTS_UUIDS.split(",")).anyMatch(s -> s.equals(order.getConcept().getUuid()))) {
+				mappedTestsExist = true;
+		}
+	
 		if (!mappedTestsExist) {
 			return null;
+		}
+
+
+		List<Task.ParameterComponent> taskInputs = null;
+		if (config.addObsAsTaskInput()) {
+			taskInputs = new ArrayList<>();
+			for (Obs obs : order.getEncounter().getObs()) {
+				Observation observation = observationService.get(obs.getUuid());
+				Task.ParameterComponent input = new Task.ParameterComponent();
+				input.setType(observation.getCode());
+				input.setValue(observation.getValue());
+				taskInputs.add(input);
+			}
 		}
 		// Create References
 		List<Reference> basedOnRefs = Collections.singletonList(
@@ -62,7 +98,7 @@ public class LabOrderHandler {
 				encounterProvider -> newReference(encounterProvider.getUuid(), FhirConstants.PRACTITIONER)).orElse(null);
 
 		// Create Task Resource for given Order
-		Task newTask = createTask(basedOnRefs, forReference, ownerRef, encounterRef);
+		Task newTask = createTask(basedOnRefs, forReference, ownerRef, encounterRef ,taskInputs);
 
 		if (order.getEncounter().getActiveEncounterProviders().isEmpty()) {
 			newTask.setRequester(requesterRef);
@@ -79,7 +115,7 @@ public class LabOrderHandler {
 	}
 
 	private Task createTask(List<Reference> basedOnRefs, Reference forReference, Reference ownerRef,
-			Reference encounterRef) {
+			Reference encounterRef ,List<Task.ParameterComponent> taskInputs) {
 		Task newTask = new Task();
 		newTask.setStatus(Task.TaskStatus.REQUESTED);
 		newTask.setIntent(Task.TaskIntent.ORDER);
@@ -87,6 +123,9 @@ public class LabOrderHandler {
 		newTask.setFor(forReference);
 		newTask.setOwner(ownerRef);
 		newTask.setEncounter(encounterRef);
+		if (taskInputs != null) {
+			newTask.setInput(taskInputs);
+		}
 		return newTask;
 	}
 
@@ -120,8 +159,20 @@ public class LabOrderHandler {
 				newReference(requesterProvider.get().getUuid(), FhirConstants.PRACTITIONER) :
 				null;
 
+		List<Task.ParameterComponent> taskInputs = null;
+		if (config.addObsAsTaskInput()) {
+			taskInputs = new ArrayList<>();
+			for (Obs obs : encounter.getObs()) {
+				Observation observation = observationService.get(obs.getUuid());
+				Task.ParameterComponent input = new Task.ParameterComponent();
+				input.setType(observation.getCode());
+				input.setValue(observation.getValue());
+				taskInputs.add(input);
+			}
+		}
+				
 		// Create Task Resource for given Order
-		Task newTask = createTask(basedOnRefs, forReference, ownerRef, encounterRef);
+		Task newTask = createTask(basedOnRefs, forReference, ownerRef, encounterRef ,taskInputs);
 		newTask.setLocation(locationRef);
 
 		if (!encounter.getActiveEncounterProviders().isEmpty()) {
