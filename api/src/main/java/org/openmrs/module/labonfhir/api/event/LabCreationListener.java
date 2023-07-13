@@ -13,8 +13,12 @@ import ca.uhn.fhir.rest.client.api.IGenericClient;
 import ca.uhn.fhir.rest.param.TokenAndListParam;
 import ca.uhn.fhir.rest.param.TokenParam;
 import org.hl7.fhir.r4.model.Identifier;
+import org.hl7.fhir.r4.model.Observation;
 import org.hl7.fhir.instance.model.api.IBaseResource;
 import org.hl7.fhir.r4.model.Bundle;
+import org.hl7.fhir.r4.model.CodeableConcept;
+import org.hl7.fhir.r4.model.Coding;
+import org.hl7.fhir.r4.model.DateTimeType;
 import org.hl7.fhir.r4.model.Reference;
 import org.hl7.fhir.r4.model.Resource;
 import org.hl7.fhir.r4.model.ServiceRequest;
@@ -128,14 +132,49 @@ public abstract class LabCreationListener implements EventListener {
 				if(taskReference.getType() == "ServiceRequest"){
 					ServiceRequest serviceRequest = fhirServiceRequestService.get(FhirUtils.referenceToId(taskReference.getReference()).get());
 					List<Reference> serviceRequestReferences = serviceRequest.getSupportingInfo();
+					DateTimeType currRegimenStartDate = null;
                     for(Reference serviceRequestReference: serviceRequestReferences){
 						String resourceId = FhirUtils.referenceToId(serviceRequestReference.getReference()).get();
+						String refDisplay = serviceRequestReference.getDisplay();
 						if(!resourceId.equals("null") && !processedReferences.contains(resourceId)){ //exclude null (for resources that don't exist) and avoid re-adds to the bundle
-							if(serviceRequestReference.getType() == "Observation"){
-								labResources.add(fhirObservationService.get(resourceId));
+							if(serviceRequestReference.getType().equals("Observation")){
+								Observation obsToAdd = fhirObservationService.get(resourceId);
+					
+								if(refDisplay.equals("Current Regimen")){
+									//grab effective date & set additional disa param code
+									currRegimenStartDate = obsToAdd.getEffectiveDateTimeType();
+									CodeableConcept obsCode = obsToAdd.getCode();
+									obsCode.addCoding(getDISACodingFor("Current Treatment", "CTREA"));
+									obsToAdd.setCode(obsCode);
+								} 
+								else if(refDisplay.equals("Current Regimen startdate")){
+									//override date
+									if(currRegimenStartDate != null){
+										obsToAdd.setValue(currRegimenStartDate);
+									}
+								}
+								else if(refDisplay.contains("Previous Regimen")){
+									//add another disa code
+									CodeableConcept obsCode = obsToAdd.getCode();
+									obsCode.addCoding(getDISACodingFor("Previous Treatment", "PTREA"));
+									obsToAdd.setCode(obsCode);
+								}else if(refDisplay.equals("First CD4")){
+									//add another disa code
+									CodeableConcept obsCode = obsToAdd.getCode();
+									obsCode.addCoding(getDISACodingFor("First CD4", "FCD4"));
+									obsToAdd.setCode(obsCode);
+								}
+								else if(refDisplay.equals("Last CD4")){
+									//add another disa code -- skip when 1st & last regimen are the same
+									CodeableConcept obsCode = obsToAdd.getCode();
+									obsCode.addCoding(getDISACodingFor("Last CD4", "LCD4"));
+									obsToAdd.setCode(obsCode);
+								}
+
+								labResources.add(obsToAdd);
 								processedReferences.add(resourceId);
 							}
-							else if(serviceRequestReference.getType() == "DiagnosticReport"){
+							else if(serviceRequestReference.getType().equals("DiagnosticReport")){
 								//labResources.add(fhirDiagnosticReportService.get(resourceId));
 								TokenAndListParam diagReportUuid = new TokenAndListParam().addAnd(new TokenParam(resourceId));
 								HashSet<Include> includes_ = new HashSet<>();
@@ -167,6 +206,15 @@ public abstract class LabCreationListener implements EventListener {
 		}
 		return transactionBundle;
 	}
+
+
+
+	
+
+	private Coding getDISACodingFor(String name, String code) {
+		String url = "http://health.gov.ls/laboratory-services";
+        return new Coding(url, code, name);
+    }
 
 	protected void sendTask(Task task) {
 		if (task != null) {
