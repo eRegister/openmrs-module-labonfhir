@@ -158,7 +158,14 @@ public abstract class LabCreationListener implements EventListener {
 									CodeableConcept obsCode = obsToAdd.getCode();
 									obsCode.addCoding(getDISACodingFor("Previous Treatment", "PTREA"));
 									obsToAdd.setCode(obsCode);
-								}else if(refDisplay.equals("First CD4")){
+								}
+								else if(refDisplay.equals("Prev VL Results")){
+									//add another disa code
+									CodeableConcept obsCode = obsToAdd.getCode();
+									obsCode.addCoding(getDISACodingFor("Previous VL Results", "PVLD"));
+									obsToAdd.setCode(obsCode);
+								}
+								else if(refDisplay.equals("First CD4")){
 									//add another disa code
 									CodeableConcept obsCode = obsToAdd.getCode();
 									obsCode.addCoding(getDISACodingFor("First CD4", "FCD4"));
