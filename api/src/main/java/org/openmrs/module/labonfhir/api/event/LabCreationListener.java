@@ -100,6 +100,7 @@ public abstract class LabCreationListener implements EventListener {
 	public abstract void processMessage(Message message);
 
 	public Bundle createLabBundle(Task task) {
+		log.error("***********Inside createLabBundle method - "+getClass().getMethods());
 		TokenAndListParam uuid = new TokenAndListParam().addAnd(new TokenParam(task.getIdElement().getIdPart()));
 		HashSet<Include> includes = new HashSet<>();
 		includes.add(new Include("Task:patient"));
@@ -114,7 +115,7 @@ public abstract class LabCreationListener implements EventListener {
 		List<IBaseResource> labResources = labBundle.getAllResources();
 		
 		//Add requisition id (Added as an identifier on Task resource) to serviceRequest(s) in the bundle
-		labResources = insertRequisitionIdOnServReq(labResources);
+		//labResources = insertRequisitionIdOnServReq(labResources);
          
 		if (!task.getLocation().isEmpty() && config.getLabUpdateTriggerObject().equals("Encounter")) {
 			labResources.add(fhirLocationService.get(FhirUtils.referenceToId(task.getLocation().getReference()).get()));
@@ -129,7 +130,7 @@ public abstract class LabCreationListener implements EventListener {
 			List <Reference> taskReferences = task.getBasedOn();
 			List <String> processedReferences = new ArrayList<String>();
 			for(Reference taskReference : taskReferences){
-				if(taskReference.getType() == "ServiceRequest"){
+				if(taskReference.getType().equals("ServiceRequest")){
 					ServiceRequest serviceRequest = fhirServiceRequestService.get(FhirUtils.referenceToId(taskReference.getReference()).get());
 					List<Reference> serviceRequestReferences = serviceRequest.getSupportingInfo();
 					DateTimeType currRegimenStartDate = null;
