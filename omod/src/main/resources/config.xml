@@ -116,7 +116,7 @@
 	<globalProperty>
 		<property>@MODULE_ID@.orderTestUuids</property>
 		<description>Concept UUIDs to filter by for Test Orders that get sent to the LIS</description>
-		<defaultValue>160046AAAAAAAAAAAAAAAAAAAAAAAAAAAAAA,165254AAAAAAAAAAAAAAAAAAAAAAAAAAAAAA</defaultValue>
+		<defaultValue>160046AAAAAAAAAAAAAAAAAAAAAAAAAAAAAA,165254AAAAAAAAAAAAAAAAAAAAAAAAAAAAAA,3e6cb55f-08f3-4d85-a78a-24ec7f3da933</defaultValue>
 	</globalProperty>
 
 	<globalProperty>
