@@ -100,7 +100,6 @@ public abstract class LabCreationListener implements EventListener {
 	public abstract void processMessage(Message message);
 
 	public Bundle createLabBundle(Task task) {
-		log.error("***********Inside createLabBundle method - "+getClass().getMethods());
 		TokenAndListParam uuid = new TokenAndListParam().addAnd(new TokenParam(task.getIdElement().getIdPart()));
 		HashSet<Include> includes = new HashSet<>();
 		includes.add(new Include("Task:patient"));
