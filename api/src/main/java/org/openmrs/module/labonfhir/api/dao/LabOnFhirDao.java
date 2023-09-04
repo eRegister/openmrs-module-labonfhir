@@ -3,9 +3,11 @@ package org.openmrs.module.labonfhir.api.dao;
 import java.util.List;
 
 import org.hibernate.criterion.Restrictions;
+import org.openmrs.api.APIException;
 import org.openmrs.api.db.hibernate.DbSession;
 import org.openmrs.api.db.hibernate.DbSessionFactory;
 import org.openmrs.module.labonfhir.api.model.FailedTask;
+import org.openmrs.module.labonfhir.api.model.TaskRequest;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Repository;
 
@@ -34,6 +36,17 @@ public class LabOnFhirDao {
         } else {
             return getSession().createCriteria(FailedTask.class).list();
         }
+    }
+
+     public TaskRequest saveOrUpdateTaskRequest(TaskRequest taskRequest) throws APIException {
+        getSession().saveOrUpdate(taskRequest);
+        return taskRequest;
+    }
+
+    public TaskRequest getLastTaskRequest() throws APIException {
+        String hql = "FROM TaskRequest tr WHERE tr.requestDate = (SELECT MAX(t.requestDate) FROM TaskRequest t)";
+        //return (TaskRequest)getSession().createQuery(hql).uniqueResult();   
+        return (TaskRequest)getSession().createQuery(hql).setMaxResults(1).uniqueResult();
     }
    
 }
