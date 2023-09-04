@@ -3,19 +3,26 @@ package org.openmrs.module.labonfhir.api.scheduler;
 import static org.apache.commons.lang3.exception.ExceptionUtils.getStackTrace;
 
 import java.math.BigDecimal;
+import java.text.SimpleDateFormat;
 import java.util.ArrayList;
+import java.util.Calendar;
+import java.util.Date;
 import java.util.Iterator;
 import java.util.List;
+import java.util.TimeZone;
 import java.util.UUID;
 
 import ca.uhn.fhir.context.FhirContext;
 import ca.uhn.fhir.rest.client.api.IGenericClient;
 import ca.uhn.fhir.rest.gclient.TokenClientParam;
+import ca.uhn.fhir.rest.param.DateRangeParam;
 import lombok.AccessLevel;
 import lombok.Setter;
 import org.apache.commons.logging.Log;
 import org.apache.commons.logging.LogFactory;
+import org.checkerframework.common.returnsreceiver.qual.This;
 import org.hibernate.SessionFactory;
+import org.hl7.fhir.instance.model.api.IBaseBundle;
 import org.hl7.fhir.r4.model.BooleanType;
 import org.hl7.fhir.r4.model.Bundle;
 import org.hl7.fhir.r4.model.CodeableConcept;
@@ -36,6 +43,8 @@ import org.openmrs.module.fhir2.api.dao.FhirObservationDao;
 import org.openmrs.module.fhir2.api.translators.ObservationReferenceTranslator;
 import org.openmrs.module.fhir2.api.translators.ObservationValueTranslator;
 import org.openmrs.module.labonfhir.LabOnFhirConfig;
+import org.openmrs.module.labonfhir.api.model.TaskRequest;
+import org.openmrs.module.labonfhir.api.service.LabOnFhirService;
 import org.openmrs.scheduler.tasks.AbstractTask;
 import org.springframework.beans.BeansException;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -54,7 +63,7 @@ public class FetchTaskUpdates extends AbstractTask implements ApplicationContext
 
 	private static String LOINC_SYSTEM = "http://loinc.org";
 
-	private static String DISA_LS_SYSTEM = "http://health.gov.ls/laboratory-services";
+	private static String DISA_LS_SYSTEM = "http://health.gov.ls/laboratory-services/";
 
 	@Autowired
 	private LabOnFhirConfig config;
@@ -85,6 +94,36 @@ public class FetchTaskUpdates extends AbstractTask implements ApplicationContext
 	@Qualifier("sessionFactory")
 	SessionFactory sessionFactory;
 
+	@Autowired
+    private LabOnFhirService labOnFhirService;
+
+	/* This is the original code */
+	// @Override
+	// public void execute() {
+
+	// 	try {
+	// 		applicationContext.getAutowireCapableBeanFactory().autowireBean(this);
+	// 	} catch (Exception e) {
+	// 		// return;
+	// 	}
+
+	// 	if (!config.isLisEnabled()) {
+	// 		return;
+	// 	}
+
+	// 	try {
+	// 		// Get List of Tasks that belong to this instance and update them
+	// 		updateTasksInBundle(client.search().forResource(Task.class)
+	// 				.where(Task.IDENTIFIER.hasSystemWithAnyCode(FhirConstants.OPENMRS_FHIR_EXT_TASK_IDENTIFIER))
+	// 				.where(Task.STATUS.exactly().code(TaskStatus.COMPLETED.toCode())).returnBundle(Bundle.class)
+	// 				.execute());
+	// 	} catch (Exception e) {
+	// 		log.error("ERROR executing FetchTaskUpdates : " + e.toString() + getStackTrace(e));
+	// 	}
+
+	// 	super.startExecuting();
+	// }
+
 	@Override
 	public void execute() {
 
@@ -99,11 +138,56 @@ public class FetchTaskUpdates extends AbstractTask implements ApplicationContext
 		}
 
 		try {
+			SimpleDateFormat dateFormat = new SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss");
+			//dateFormat.setTimeZone(TimeZone.getTimeZone("UTC")); //our hapi fhir uses this timezone
+			Date newDate = new Date();
+			Calendar calendar = Calendar.getInstance();
+			calendar.setTime(newDate);
+			calendar.add(Calendar.YEAR, -5);
+			Date fiveYearsAgo = calendar.getTime();
+
+			// TaskRequest lastRequest = labOnFhirService.getLastTaskRequest();
+			// String lastRequestDate = dateFormat.format(fiveYearsAgo);
+			// if (lastRequest != null) {
+			// 	lastRequestDate = dateFormat.format(lastRequest.getRequestDate());
+			// }
+
+			// String currentTime = dateFormat.format(newDate);
+
+			// Translate dates (lasstreq date & date now) to UTC since HAPI is running on UTC TZ
+			TaskRequest lastRequest = labOnFhirService.getLastTaskRequest();
+			String lastRequestDate = dateFormat.format(convertDateToUTC(fiveYearsAgo, TimeZone.getDefault()));
+			if (lastRequest != null) {
+				lastRequestDate = dateFormat.format(convertDateToUTC(lastRequest.getRequestDate(), TimeZone.getDefault()));
+			}
+			Date newDateUTC = convertDateToUTC(newDate, TimeZone.getDefault());
+			String currentTime = dateFormat.format(newDateUTC);
+
+			DateRangeParam lastUpdated = new DateRangeParam().setLowerBound(lastRequestDate).setUpperBound(currentTime);
+			
 			// Get List of Tasks that belong to this instance and update them
-			updateTasksInBundle(client.search().forResource(Task.class)
-					.where(Task.IDENTIFIER.hasSystemWithAnyCode(FhirConstants.OPENMRS_FHIR_EXT_TASK_IDENTIFIER))
-					.where(Task.STATUS.exactly().code(TaskStatus.COMPLETED.toCode())).returnBundle(Bundle.class)
-					.execute());
+			//The request below will fetch the first page
+			Bundle taskBundle = client.search().forResource(Task.class)
+			        .where(Task.IDENTIFIER.hasSystemWithAnyCode(FhirConstants.OPENMRS_FHIR_EXT_TASK_IDENTIFIER))
+			        .where(Task.STATUS.exactly().code(TaskStatus.COMPLETED.toCode())).lastUpdated(lastUpdated)
+			        .returnBundle(Bundle.class).execute();
+
+			log.warn("Just ran query with lastupdated range - Lower bound: "+lastUpdated.getLowerBoundAsInstant()+ " and Upper bound: "+lastUpdated.getUpperBoundAsInstant());		
+			
+			List<Bundle> taskBundles = new ArrayList<>();
+			taskBundles.add(taskBundle);
+			//Support FHIR Server Pagination -- fetch succeeding pages
+			while (taskBundle.getLink(IBaseBundle.LINK_NEXT) != null) {
+				// Load the next page
+				taskBundle = client.loadPage().next(taskBundle).execute();
+				taskBundles.add(taskBundle);
+			}		
+			updateTasksInBundle(taskBundles);
+			
+			TaskRequest request = new TaskRequest();
+			request.setRequestDate(newDate);
+			labOnFhirService.saveOrUpdateTaskRequest(request);
+			
 		} catch (Exception e) {
 			log.error("ERROR executing FetchTaskUpdates : " + e.toString() + getStackTrace(e));
 		}
@@ -118,37 +202,39 @@ public class FetchTaskUpdates extends AbstractTask implements ApplicationContext
 		this.stopExecuting();
 	}
 
-	private void updateTasksInBundle(Bundle taskBundle) {
-
-		for (Iterator tasks = taskBundle.getEntry().iterator(); tasks.hasNext();) {
-			String openmrsTaskUuid = null;
-
-			try {
-				// Read incoming LIS Task
-				Task openelisTask = (Task) ((Bundle.BundleEntryComponent) tasks.next()).getResource();
-				openmrsTaskUuid = openelisTask.getIdentifierFirstRep().getValue();
-
-				// Find original openmrs task using Identifier
-				Task openmrsTask = taskService.get(openmrsTaskUuid);
-
-				// Only update if matching OpenMRS Task found
-				if (openmrsTask != null) {
-					// Handle status
-					openmrsTask.setStatus(openelisTask.getStatus());
-
-					Boolean taskOutPutUpdated = false;
-					if (openelisTask.hasOutput()) {
-						// openmrsTask.setOutput(openelisTask.getOutput());
-						taskOutPutUpdated = updateOutput(openelisTask.getOutput(), openmrsTask);
-					}
-					if (taskOutPutUpdated) {
-						taskService.update(openmrsTaskUuid, openmrsTask);
+	private void updateTasksInBundle(List<Bundle> taskBundles) {
+		for (Bundle bundle : taskBundles) {
+			for (Iterator tasks = bundle.getEntry().iterator(); tasks.hasNext();) {
+				String openmrsTaskUuid = null;
+				
+				try {
+					// Read incoming LIS Task
+					Task openelisTask = (Task) ((Bundle.BundleEntryComponent) tasks.next()).getResource();
+					openmrsTaskUuid = openelisTask.getIdentifierFirstRep().getValue();
+					// Find original openmrs task using Identifier
+					Task openmrsTask = taskService.get(openmrsTaskUuid);
+					
+					// Only update if matching OpenMRS Task found
+					if (openmrsTask != null) {
+						// Handle status
+						openmrsTask.setStatus(openelisTask.getStatus());
+						
+						Boolean taskOutPutUpdated = false;
+						if (openelisTask.hasOutput()) {
+							// openmrsTask.setOutput(openelisTask.getOutput());
+							taskOutPutUpdated = updateOutput(openelisTask.getOutput(), openmrsTask);
+						}
+						if (taskOutPutUpdated) {
+							taskService.update(openmrsTaskUuid, openmrsTask);
+						}
 					}
 				}
-			} catch (Exception e) {
-				log.error("Could not save task " + openmrsTaskUuid + ":" + e.toString() + getStackTrace(e));
+				catch (Exception e) {
+					log.error("Could not save task " + openmrsTaskUuid + ":" + e.toString() + getStackTrace(e));
+				}
 			}
 		}
+		
 	}
 
 	private Boolean updateOutput(List<Task.TaskOutputComponent> output, Task openmrsTask) {
@@ -189,7 +275,7 @@ public class FetchTaskUpdates extends AbstractTask implements ApplicationContext
 					List<Reference> results = new ArrayList<>();
 					
 					String labTestType = "";
-					log.error("DIagnostic Report code is "+ diagnosticReportCode.getCode());
+					log.warn("DIagnostic Report code is "+ diagnosticReportCode.getCode());
 					FhirContext ctx = FhirContext.forR4();
 					if (!allExistingLoincCodes.contains(diagnosticReportCode.getCode())) {
 						if(diagnosticReportCode.getCode().equals("20447-9")){
@@ -197,7 +283,7 @@ public class FetchTaskUpdates extends AbstractTask implements ApplicationContext
 							labTestType = "VL";
 						}
 						else{
-							log.error("Did not register lab test type as VL");
+							log.warn("Did not register lab test type as VL");
 						}
 						// save Observation
 						for (Bundle.BundleEntryComponent entry : diagnosticReportBundle.getEntry()) {
@@ -329,8 +415,14 @@ public class FetchTaskUpdates extends AbstractTask implements ApplicationContext
     }
 
 	private Coding getDISACodingFor(String name, String code) {
-		String url = "http://health.gov.ls/laboratory-services";
+		String url = "http://health.gov.ls/laboratory-services/";
         return new Coding(url, code, name);
+    }
+
+	private static Date convertDateToUTC(Date date, TimeZone fromTimeZone) {
+        long timeInMilliseconds = date.getTime();
+        long offset = fromTimeZone.getOffset(timeInMilliseconds);
+        return new Date(timeInMilliseconds - offset);
     }
 
 	@Override
