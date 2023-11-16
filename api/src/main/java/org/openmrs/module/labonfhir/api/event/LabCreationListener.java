@@ -21,6 +21,7 @@ import org.hl7.fhir.r4.model.Bundle;
 import org.hl7.fhir.r4.model.CodeableConcept;
 import org.hl7.fhir.r4.model.Coding;
 import org.hl7.fhir.r4.model.DateTimeType;
+import org.hl7.fhir.r4.model.Encounter;
 import org.hl7.fhir.r4.model.Reference;
 import org.hl7.fhir.r4.model.Resource;
 import org.hl7.fhir.r4.model.ServiceRequest;
@@ -29,6 +30,7 @@ import org.openmrs.api.context.Daemon;
 import org.openmrs.event.EventListener;
 import org.openmrs.module.DaemonToken;
 import org.openmrs.module.fhir2.api.FhirDiagnosticReportService;
+import org.openmrs.module.fhir2.api.FhirEncounterService;
 import org.openmrs.module.fhir2.api.FhirLocationService;
 import org.openmrs.module.fhir2.api.FhirObservationService;
 import org.openmrs.module.fhir2.api.FhirServiceRequestService;
@@ -70,6 +72,8 @@ public abstract class LabCreationListener implements EventListener {
 	private FhirServiceRequestService fhirServiceRequestService;
 	@Autowired
 	private FhirObservationService fhirObservationService;
+	@Autowired
+	private FhirEncounterService fhirEncounterService;
 
 	@Autowired
 	private FhirDiagnosticReportService fhirDiagnosticReportService;
@@ -120,11 +124,19 @@ public abstract class LabCreationListener implements EventListener {
 
 		//Add eregister lab order number on ServiceReq on Task resource
 		labResources = insertLabOrderIdentifierToTask(labResources);
-         
+
+        //Include the location resource in the bundle - Encounter trigger mode
 		if (!task.getLocation().isEmpty() && config.getLabUpdateTriggerObject().equals("Encounter")) {
 			labResources.add(fhirLocationService.get(FhirUtils.referenceToId(task.getLocation().getReference()).get()));
 		}
-    
+		//Include the location resource in the bundle - Order trigger mode
+		if(config.getLabUpdateTriggerObject().equals("Order")){
+			Encounter encounter = fhirEncounterService.get(FhirUtils.referenceToId(task.getEncounter().getReference()).get());
+			if(encounter.getLocationFirstRep().getLocation().getReference() != null){
+				labResources.add(fhirLocationService.get(FhirUtils.referenceToId(encounter.getLocationFirstRep().getLocation().getReference()).get()));
+			}
+		}
+		
 		// Add ART Regimen, Pregnancy status, etc. Obs & DiagnosticReport (including Obs linked in DiagReport) linked on ServiceRequest
         //(1) get task based on -- servicerequest
 		//(2) then get supporting info
