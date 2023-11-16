@@ -22,17 +22,20 @@ import org.apache.commons.logging.Log;
 import org.apache.commons.logging.LogFactory;
 import org.checkerframework.common.returnsreceiver.qual.This;
 import org.hibernate.SessionFactory;
+import org.hibernate.annotations.OnDelete;
 import org.hl7.fhir.instance.model.api.IBaseBundle;
 import org.hl7.fhir.r4.model.BooleanType;
 import org.hl7.fhir.r4.model.Bundle;
 import org.hl7.fhir.r4.model.CodeableConcept;
 import org.hl7.fhir.r4.model.Coding;
+import org.hl7.fhir.r4.model.DateTimeType;
 import org.hl7.fhir.r4.model.DiagnosticReport;
 import org.hl7.fhir.r4.model.Observation;
 import org.hl7.fhir.r4.model.Reference;
 import org.hl7.fhir.r4.model.ResourceType;
 import org.hl7.fhir.r4.model.StringType;
 import org.hl7.fhir.r4.model.Task;
+import org.hl7.fhir.r4.model.Type;
 import org.hl7.fhir.r4.model.codesystems.TaskStatus;
 import org.openmrs.api.ConceptService;
 import org.openmrs.module.fhir2.FhirConstants;
@@ -255,8 +258,7 @@ public class FetchTaskUpdates extends AbstractTask implements ApplicationContext
 
 		if (!output.isEmpty()) {
 						
-			log.error("Got a task with some output ...");
-			log.error("Got a task "+openmrsTask.getId());
+			log.info("Got a task "+openmrsTask.getId());
 			// Save each output entry
 			for (Iterator outputRefI = output.stream().iterator(); outputRefI.hasNext();) {
 				Task.TaskOutputComponent outputRef = (Task.TaskOutputComponent) outputRefI.next();
@@ -275,11 +277,11 @@ public class FetchTaskUpdates extends AbstractTask implements ApplicationContext
 					List<Reference> results = new ArrayList<>();
 					
 					String labTestType = "";
-					log.warn("DIagnostic Report code is "+ diagnosticReportCode.getCode());
+					//log.warn("DIagnostic Report code is "+ diagnosticReportCode.getCode());
 					FhirContext ctx = FhirContext.forR4();
 					if (!allExistingLoincCodes.contains(diagnosticReportCode.getCode())) {
 						if(diagnosticReportCode.getCode().equals("20447-9")){
-							log.error("Registered lab test type as VL");
+							log.warn("Incoming task holds results for VL");
 							labTestType = "VL";
 						}
 						else{
@@ -292,6 +294,7 @@ public class FetchTaskUpdates extends AbstractTask implements ApplicationContext
 									Observation newObs = (Observation) entry.getResource();
 									newObs.setEncounter(encounterReference);
 									newObs.setBasedOn(basedOn);
+									//Observation fhirObs = newObs;
 									newObs = observationService.create(newObs);
 									Reference obsRef = new Reference();
 									obsRef.setReference(
@@ -300,88 +303,10 @@ public class FetchTaskUpdates extends AbstractTask implements ApplicationContext
 
 									// for VL add additional Obs
 									// if(labTestType.equals("VL")){
-									// 	log.error("Found a VL Result so ... creating additional Observations");
+									// 	log.warn("Found a VL Result so ... mapping results to existing HIVTC concepts");
 									// 	//apply VL rules ... i.e. map to existing concepts
-									// 	if(containsVLValueCodes(newObs.getCode().getCoding())){
-									// 		Observation HIVTCVLDataObs = new Observation();
-									// 		HIVTCVLDataObs.setId(UUID.randomUUID().toString());
-									// 		HIVTCVLDataObs.setEncounter(encounterReference);
-									// 		HIVTCVLDataObs.setSubject(newObs.getSubject());
-									// 		HIVTCVLDataObs.setBasedOn(basedOn);
-									// 		HIVTCVLDataObs.setStatus(newObs.getStatus());
-									// 		HIVTCVLDataObs.setEffective(newObs.getEffectiveDateTimeType());
-									// 		HIVTCVLDataObs.setCode(new CodeableConcept().addCoding(getDISACodingFor("HIVTC, Viral Load Data", "HIVTCVLDATA")));
-											
-									// 		Observation HIVTCVLDataAbnormalObs = new Observation();
-									// 		HIVTCVLDataAbnormalObs.setId(UUID.randomUUID().toString());
-									// 		HIVTCVLDataAbnormalObs.setEncounter(encounterReference);
-									// 		HIVTCVLDataAbnormalObs.setSubject(newObs.getSubject());
-									// 		HIVTCVLDataAbnormalObs.setBasedOn(basedOn);
-									// 		HIVTCVLDataAbnormalObs.setStatus(newObs.getStatus());
-									// 		HIVTCVLDataAbnormalObs.setEffective(newObs.getEffectiveDateTimeType());
-									// 		HIVTCVLDataAbnormalObs.setCode(new CodeableConcept().addCoding(getDISACodingFor("Viral Load Abnormal", "HIVTCVLDATAAbnormal")));
-									// 		//Internal Rules
-									// 		BigDecimal VLValueNormalCutoff = new BigDecimal(999);
-									// 		BigDecimal VLValueLow1 = new BigDecimal(20);
-									// 		BigDecimal VLValueLow2 = new BigDecimal(30);
-									// 		BigDecimal reportedVL = newObs.getValueQuantity().getValue();
-									// 		if(reportedVL.compareTo(VLValueNormalCutoff) > 0){
-									// 			//value is greater than 999 so it is Abnormal
-									// 			// Set HIVTC, VL Data - Abonormal to true
-									// 			HIVTCVLDataAbnormalObs.setValue(new BooleanType(true));
-									// 		}
-									// 		else{ 
-									// 			// VL value is less or equal to 999
-									// 			//if(val is < 20 or <30)
-									// 			if((reportedVL.compareTo(VLValueLow1) == 0) && (newObs.getValueQuantity().hasComparator())){
-									// 				if(newObs.getValueQuantity().getComparator().toCode().equals("<")){
-									// 					//set HIVTC, Viral Load Result to <20
-									// 				}	
-									// 			}
-									// 			else if ((reportedVL.compareTo(VLValueLow2) == 0) && (newObs.getValueQuantity().hasComparator())){
-									// 				if(newObs.getValueQuantity().getComparator().toCode().equals("<")){
-									// 					//set HIVTC, Viral Load Result to <30
-									// 				}	
-									// 			}
-									// 			else if(reportedVL.compareTo(VLValueLow1) >= 0){
-									// 				HIVTCVLDataAbnormalObs.setValue(new BooleanType(false));
-									// 				//set HIVTC, Viral Load Result to >=20
-									// 			}
-									// 			else if(reportedVL.compareTo(VLValueLow2) >= 0){
-									// 				HIVTCVLDataAbnormalObs.setValue(new BooleanType(false));
-									// 				//set HIVTC, Viral Load Result to >=30
-									// 			}
-									// 		}
-											
-											
-									// 		//save secondary obs
-									// 		log.error("Abnormal Obs"+ctx.newJsonParser().encodeResourceToString(HIVTCVLDataAbnormalObs));
-									// 		observationService.create(HIVTCVLDataAbnormalObs);
-											
-											
-
-									// 		List<Reference> VLObsReferences = new ArrayList<Reference>();
-									// 		Reference obsVLRef = new Reference();
-									// 		obsVLRef.setReference(ResourceType.Observation + "/" + newObs.getIdElement().getIdPart()).setType("Observation");
-									// 		VLObsReferences.add(obsVLRef);
-									// 		Reference obsVLRefAbnormal = new Reference();
-									// 		obsVLRefAbnormal.setReference(ResourceType.Observation + "/" + HIVTCVLDataAbnormalObs.getIdElement().getIdPart()).setType("Observation");
-									// 		VLObsReferences.add(obsVLRefAbnormal);
-									// 		HIVTCVLDataObs.setHasMember(VLObsReferences);
-									// 		log.error("Data Obs"+ctx.newJsonParser().encodeResourceToString(HIVTCVLDataObs));
-											
-									// 		//StringType value = (StringType) (newObs.getValue().toString()+", "+HIVTCVLDataAbnormalObs.getValue().toString());
-									// 		StringType val = new StringType(newObs.getValue().toString()+", "+HIVTCVLDataAbnormalObs.getValue());
-									// 		//StringType val = new StringType("sample val");
-									// 		HIVTCVLDataObs.setValue(val);
-											
-
-									// 		observationService.create(HIVTCVLDataObs);
-											
-									// 	}
-									// 		// else if(newObs.getCode().getCoding().contains("Low val")){
-									// 		// 	secondaryObs.setCode(null); //code for ldl
-									// 		// }
+									// 	List<Reference> additionalResults = saveSecondaryVLObs(fhirObs);
+									// 	results.addAll(additionalResults);
 									// }
 								}
 							}
@@ -403,8 +328,8 @@ public class FetchTaskUpdates extends AbstractTask implements ApplicationContext
 
 	private static Boolean containsVLValueCodes(List<Coding> list) {
 		List <String> VLValueCodes = new ArrayList<String>();
-		VLValueCodes.add("HIVVM");
-		VLValueCodes.add("HIVVT");
+		VLValueCodes.add("HIVVL-HIVVM");
+		VLValueCodes.add("HIVVL-HIVVT");
 		VLValueCodes.add("70241-5");
         for (Coding item : list) {
             if (VLValueCodes.contains(item.getCode())) {
@@ -413,6 +338,128 @@ public class FetchTaskUpdates extends AbstractTask implements ApplicationContext
         }
         return false;
     }
+
+	private static Boolean containsVLLowValueCodes(List<Coding> list) {
+		List <String> VLLowValueCodes = new ArrayList<String>();
+		VLLowValueCodes.add("HIVVL-HIVVC");
+		VLLowValueCodes.add("HIVVL-HIVVH");
+        for (Coding item : list) {
+            if (VLLowValueCodes.contains(item.getCode())) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+	// This function maps incoming VL results to existing Obs conecpts to avoid fiddling with the xds-sender module
+	private List<Reference> saveSecondaryVLObs(Observation newObs){
+			List<Reference> results = new ArrayList<>();
+			//FhirContext ctx = FhirContext.forR4();
+
+			Observation HIVTCVLResultReturnDate = copyObs(newObs);					
+			HIVTCVLResultReturnDate.setCode(new CodeableConcept().addCoding(getDISACodingFor("Viral load blood results return date", "HIVTCVLReturnDate")));
+			HIVTCVLResultReturnDate.setValue(new DateTimeType(new Date())); //today's date as we read results from HAPI FHIR server
+
+			if(containsVLValueCodes(newObs.getCode().getCoding())){
+				// Observation HIVTCVLDataObs = copyObs(newObs);
+				// HIVTCVLDataObs.setCode(new CodeableConcept().addCoding(getDISACodingFor("HIVTC, Viral Load Data", "HIVTCVLDATA")));
+				Observation HIVTCVLDataAbnormalObs = copyObs(newObs);
+				HIVTCVLDataAbnormalObs.setCode(new CodeableConcept().addCoding(getDISACodingFor("Viral Load Abnormal", "HIVTCVLDATAAbnormal")));
+				Observation HIVTCVLResult = copyObs(newObs);					
+				HIVTCVLResult.setCode(new CodeableConcept().addCoding(getDISACodingFor("Viral Load Result", "HIVTCVLResult")));
+				Observation HIVTCVL = newObs;
+				HIVTCVL.setCode(new CodeableConcept().addCoding(getDISACodingFor("HIVTC, Viral Load", "HIVTCVL")));
+				
+				//Internal Rules
+				BigDecimal VLValueNormalCutoff = new BigDecimal(999);
+				BigDecimal VLValueLow1 = new BigDecimal(20);
+				BigDecimal VLValueLow2 = new BigDecimal(30);
+				BigDecimal reportedVL = newObs.getValueQuantity().getValue();
+				
+				if(reportedVL.compareTo(VLValueNormalCutoff) > 0){
+					//value is greater than 999 so it is Abnormal
+					// Set HIVTC, VL Data - Abonormal to true
+					HIVTCVLDataAbnormalObs.setValue(new BooleanType(true));
+				}
+				else{ 
+					// VL value is less or equal to 999
+					HIVTCVLDataAbnormalObs.setValue(new BooleanType(false));
+					//if(val is < 20 or <30)
+					if((reportedVL.compareTo(VLValueLow1) == 0) && (newObs.getValueQuantity().hasComparator())){
+						if(newObs.getValueQuantity().getComparator().toCode().equals("<")){
+							//set HIVTC, Viral Load Result to <20
+							CodeableConcept lessThan20 = new CodeableConcept(getDISACodingFor("Less than 20 copies/ml", "<20"));
+							HIVTCVLResult.setValue(lessThan20);
+						}	
+					}
+					else if ((reportedVL.compareTo(VLValueLow2) == 0) && (newObs.getValueQuantity().hasComparator())){
+						if(newObs.getValueQuantity().getComparator().toCode().equals("<")){
+							//set HIVTC, Viral Load Result to <30
+						}	
+					}
+					else if(reportedVL.compareTo(VLValueLow1) >= 0){
+						//set HIVTC, Viral Load Result to >=20
+						CodeableConcept greaterOrEq20 = new CodeableConcept(getDISACodingFor("Greater or Equal to 20 copies/ml", ">=20"));
+						HIVTCVLResult.setValue(greaterOrEq20);
+					}
+					else if(reportedVL.compareTo(VLValueLow2) >= 0){
+						//set HIVTC, Viral Load Result to >=30
+					}
+				}
+				
+				//save VL abnormal obs
+				HIVTCVLDataAbnormalObs = observationService.create(HIVTCVLDataAbnormalObs);
+				//save VL result (<20, >=20, etc.)
+				HIVTCVLResult = observationService.create(HIVTCVLResult);
+				//save VL value (e.g. 500 copies/ml)
+				HIVTCVL = observationService.create(HIVTCVL);
+				//save VL result reception date (today)
+				observationService.create(HIVTCVLResultReturnDate);
+				
+				/* TDO - HIVTC VL Data Obs (members - Data & Abnormal obs) - transient state issues
+				List<Reference> VLObsReferences = new ArrayList<Reference>();
+				Reference obsVLRef = new Reference();
+				obsVLRef.setReference(ResourceType.Observation + "/" + newObs.getIdElement().getIdPart()).setType("Observation");
+				VLObsReferences.add(obsVLRef);
+				Reference obsVLRefAbnormal = new Reference();
+				obsVLRefAbnormal.setReference(ResourceType.Observation + "/" + HIVTCVLDataAbnormalObs.getIdElement().getIdPart()).setType("Observation");
+				VLObsReferences.add(obsVLRefAbnormal);
+				HIVTCVLDataObs.setHasMember(VLObsReferences);
+				log.warn("-------------VL DATA Obs----------------------------------------------");
+				log.warn("Data Obs"+ctx.newJsonParser().encodeResourceToString(HIVTCVLDataObs));
+				
+				//StringType value = (StringType) (newObs.getValue().toString()+", "+HIVTCVLDataAbnormalObs.getValue().toString());
+				//StringType val = new StringType(newObs.getValue().toString()+", "+HIVTCVLDataAbnormalObs.getValue());
+				StringType val = new StringType("sample val");
+				//Type type = new StringType();
+				HIVTCVLDataObs.setValue(val);
+				//observationService.create(HIVTCVLDataObs);
+				*/
+			}
+			else if(containsVLLowValueCodes(newObs.getCode().getCoding())){
+				Observation HIVTCVLResult = copyObs(newObs);		
+				HIVTCVLResult.setCode(new CodeableConcept().addCoding(getDISACodingFor("Viral Load Result", "HIVTCVLResult")));
+				CodeableConcept undetectable = new CodeableConcept(getDISACodingFor("Undetectable", "Undetectable"));
+				HIVTCVLResult.setValue(undetectable);
+
+				//save VL result (in this case undetectable / LDL)
+				HIVTCVLResult = observationService.create(HIVTCVLResult);
+				//save VL result return date
+				HIVTCVLResultReturnDate = observationService.create(HIVTCVLResultReturnDate);
+			}
+		return results;
+	}
+
+	private Observation copyObs(Observation newObs){
+		Observation Obs = new Observation();
+					Obs.setId(UUID.randomUUID().toString());
+					Obs.setEncounter(newObs.getEncounter());
+					Obs.setSubject(newObs.getSubject());
+					Obs.setBasedOn(newObs.getBasedOn());
+					Obs.setStatus(newObs.getStatus());
+					Obs.setEffective(newObs.getEffectiveDateTimeType());
+		return Obs;
+	}
 
 	private Coding getDISACodingFor(String name, String code) {
 		String url = "http://health.gov.ls/laboratory-services/";
