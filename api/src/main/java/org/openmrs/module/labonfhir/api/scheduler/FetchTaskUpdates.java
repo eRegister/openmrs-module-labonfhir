@@ -175,7 +175,7 @@ public class FetchTaskUpdates extends AbstractTask implements ApplicationContext
 			        .where(Task.STATUS.exactly().code(TaskStatus.COMPLETED.toCode())).lastUpdated(lastUpdated)
 			        .returnBundle(Bundle.class).execute();
 
-			log.warn("Just ran query with lastupdated range - Lower bound: "+lastUpdated.getLowerBoundAsInstant()+ " and Upper bound: "+lastUpdated.getUpperBoundAsInstant());		
+			//log.warn("Just ran query with lastupdated range - Lower bound: "+lastUpdated.getLowerBoundAsInstant()+ " and Upper bound: "+lastUpdated.getUpperBoundAsInstant());		
 			
 			List<Bundle> taskBundles = new ArrayList<>();
 			taskBundles.add(taskBundle);
