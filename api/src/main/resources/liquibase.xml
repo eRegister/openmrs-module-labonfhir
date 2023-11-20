@@ -132,15 +132,15 @@
         </sql>
     </changeSet>
 
-    <!-- <changeSet id="create-orders-trigger-to-test-order" author="lmphatsi" dbms="mysql">
+    <changeSet id="create-orders-trigger-to-test-order" author="lmphatsi" dbms="mysql">
         <comment>
 			Create orders trigger ... add lab tests to testorders
 		</comment>
         <sqlFile
             splitStatements="false"
             stripComments="false"
-            path="create_trigger.sql"/>
-    </changeSet> -->
+            path="sql/create_trigger.sql"/>
+    </changeSet>
     
 </databaseChangeLog>
 
