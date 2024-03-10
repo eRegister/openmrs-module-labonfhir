@@ -115,7 +115,7 @@
 		<preConditions onFail="MARK_RAN" onError="WARN">
             <and>
 			    <tableExists tableName="fhir_concept_source"/>
-                <sqlCheck expectedResult="1">
+                <sqlCheck expectedResult="0">
                     select 1 from concept_reference_source where name = 'LSMOH DISA' and retired = false;
                 </sqlCheck>
             </and>
@@ -133,6 +133,13 @@
     </changeSet>
 
     <changeSet id="create-orders-trigger-to-test-order" author="lmphatsi" dbms="mysql">
+        <preConditions onFail="MARK_RAN" onError="WARN">
+            <sqlCheck expectedResult="0">
+                SELECT COUNT(*) FROM information_schema.triggers 
+                WHERE trigger_schema = 'openmrs' 
+                  AND trigger_name = 'openmrs_orders_AFTER_INSERT';
+            </sqlCheck>
+        </preConditions>
         <comment>
 			Create orders trigger ... add lab tests to testorders
 		</comment>
