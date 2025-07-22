@@ -132,23 +132,24 @@
         </sql>
     </changeSet>
 
-    <changeSet id="create-orders-trigger-to-test-order" author="lmphatsi" dbms="mysql">
-        <preConditions onFail="MARK_RAN" onError="WARN">
-            <sqlCheck expectedResult="0">
-                SELECT COUNT(*) FROM information_schema.triggers 
-                WHERE trigger_schema = 'openmrs' 
-                  AND trigger_name = 'openmrs_orders_AFTER_INSERT';
-            </sqlCheck>
-        </preConditions>
-        <comment>
-			Create orders trigger ... add lab tests to testorders
-		</comment>
-        <sqlFile
-            splitStatements="false"
-            stripComments="false"
-            path="sql/create_trigger.sql"/>
-    </changeSet>
-    
+    <!--
+        <changeSet id="create-orders-trigger-to-test-order" author="lmphatsi" dbms="mysql">
+            <preConditions onFail="MARK_RAN" onError="WARN">
+                <sqlCheck expectedResult="0">
+                    SELECT COUNT(*) FROM information_schema.triggers
+                    WHERE trigger_schema = 'openmrs'
+                      AND trigger_name = 'openmrs_orders_AFTER_INSERT';
+                </sqlCheck>
+            </preConditions>
+            <comment>
+                Create orders trigger ... add lab tests to testorders
+            </comment>
+            <sqlFile
+                splitStatements="false"
+                stripComments="false"
+                path="sql/create_trigger.sql"/>
+        </changeSet>
+    -->
 </databaseChangeLog>
 
 

@@ -69,7 +69,6 @@ public class LabOrderHandler {
 			return null;
 		}
 
-
 		List<Task.ParameterComponent> taskInputs = null;
 		if (config.addObsAsTaskInput()) {
 			taskInputs = new ArrayList<>();
@@ -133,61 +132,73 @@ public class LabOrderHandler {
 		if (encounter.getOrders().isEmpty()) {
 			return null;
 		}
-		// Create References
-		List<Reference> basedOnRefs = encounter.getOrders().stream().map(order -> {
-			AtomicReference<Order> orders = new AtomicReference<>();
-			orders.set(order);
+		final String REQUIRED_TESTS_UUIDS = config.getOrderTestUuids();
 
-			if (orders.get() != null) {
-				return newReference(orders.get().getUuid(), FhirConstants.SERVICE_REQUEST);
-			} else {
-				return null;
-			}
-		}).collect(Collectors.toList());
-
-		Reference forReference = newReference(encounter.getPatient().getUuid(), FhirConstants.PATIENT);
-
-		Reference ownerRef = newReference(config.getLisUserUuid(), FhirConstants.PRACTITIONER);
-
-		Reference encounterRef = newReference(encounter.getUuid(), FhirConstants.ENCOUNTER);
-
-		Reference locationRef = newReference(encounter.getLocation().getUuid(), FhirConstants.LOCATION);
-
-		Optional<EncounterProvider> requesterProvider = encounter.getActiveEncounterProviders().stream().findFirst();
-
-		Reference requesterRef = requesterProvider.isPresent() ?
-				newReference(requesterProvider.get().getUuid(), FhirConstants.PRACTITIONER) :
-				null;
-
-		List<Task.ParameterComponent> taskInputs = null;
-		if (config.addObsAsTaskInput()) {
-			taskInputs = new ArrayList<>();
-			for (Obs obs : encounter.getObs()) {
-				Observation observation = observationService.get(obs.getUuid());
-				Task.ParameterComponent input = new Task.ParameterComponent();
-				input.setType(observation.getCode());
-				input.setValue(observation.getValue());
-				taskInputs.add(input);
+		List<Order> ordersList = new ArrayList<>();
+		for (Order order : encounter.getOrders() ) {
+			if (Arrays.stream(REQUIRED_TESTS_UUIDS.split(",")).anyMatch(s -> s.equals(order.getConcept().getUuid()))){
+				ordersList.add(order);
 			}
 		}
-				
-		// Create Task Resource for given Order
-		Task newTask = createTask(basedOnRefs, forReference, ownerRef, encounterRef ,taskInputs);
-		newTask.setLocation(locationRef);
 
-		if (!encounter.getActiveEncounterProviders().isEmpty()) {
-			newTask.setRequester(requesterRef);
-		}
+        if (ordersList.isEmpty()) {
+            return null;
+        } else {
+			// Create References
+            List<Reference> basedOnRefs = ordersList.stream().map(order -> {
+                AtomicReference<Order> orders = new AtomicReference<>();
+                orders.set(order);
 
-		// Save the new Task Resource
-		try {
-			newTask = taskService.create(newTask);
-		}
-		catch (DAOException e) {
-			throw new OrderCreationException("Exception occurred while creating task for encounter " + encounter.getId());
-		}
-		return newTask;
-	}
+                if (orders.get() != null) {
+                    return newReference(orders.get().getUuid(), FhirConstants.SERVICE_REQUEST);
+                } else {
+                    return null;
+                }
+            }).collect(Collectors.toList());
+
+            Reference forReference = newReference(encounter.getPatient().getUuid(), FhirConstants.PATIENT);
+
+            Reference ownerRef = newReference(config.getLisUserUuid(), FhirConstants.PRACTITIONER);
+
+            Reference encounterRef = newReference(encounter.getUuid(), FhirConstants.ENCOUNTER);
+
+            Reference locationRef = newReference(encounter.getLocation().getUuid(), FhirConstants.LOCATION);
+
+            Optional<EncounterProvider> requesterProvider = encounter.getActiveEncounterProviders().stream().findFirst();
+
+            Reference requesterRef = requesterProvider.isPresent() ?
+                    newReference(requesterProvider.get().getUuid(), FhirConstants.PRACTITIONER) :
+                    null;
+
+            List<Task.ParameterComponent> taskInputs = null;
+            if (config.addObsAsTaskInput()) {
+                taskInputs = new ArrayList<>();
+                for (Obs obs : encounter.getObs()) {
+                    Observation observation = observationService.get(obs.getUuid());
+                    Task.ParameterComponent input = new Task.ParameterComponent();
+                    input.setType(observation.getCode());
+                    input.setValue(observation.getValue());
+                    taskInputs.add(input);
+                }
+            }
+
+            // Create Task Resource for given Order
+            Task newTask = createTask(basedOnRefs, forReference, ownerRef, encounterRef, taskInputs);
+            newTask.setLocation(locationRef);
+
+            if (!encounter.getActiveEncounterProviders().isEmpty()) {
+                newTask.setRequester(requesterRef);
+            }
+
+            // Save the new Task Resource
+            try {
+                newTask = taskService.create(newTask);
+            } catch (DAOException e) {
+                throw new OrderCreationException("Exception occurred while creating task for encounter " + encounter.getId());
+            }
+            return newTask;
+        }
+    }
 
 	private Reference newReference(String uuid, String type) {
 		return new Reference().setReference(type + "/" + uuid).setType(type);
