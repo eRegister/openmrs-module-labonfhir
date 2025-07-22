@@ -3,7 +3,6 @@ package org.openmrs.module.labonfhir.api.event;
 import javax.jms.Message;
 
 import java.util.ArrayList;
-import java.util.Arrays;
 import java.util.HashSet;
 import java.util.List;
 
@@ -15,7 +14,6 @@ import ca.uhn.fhir.rest.param.TokenAndListParam;
 import ca.uhn.fhir.rest.param.TokenParam;
 import org.hl7.fhir.r4.model.Identifier;
 import org.hl7.fhir.r4.model.Observation;
-import org.hibernate.hql.internal.ast.tree.IdentNode;
 import org.hl7.fhir.instance.model.api.IBaseResource;
 import org.hl7.fhir.r4.model.Bundle;
 import org.hl7.fhir.r4.model.CodeableConcept;
@@ -67,7 +65,7 @@ public abstract class LabCreationListener implements EventListener {
 	@Autowired
 	private FhirTaskService fhirTaskService;
 
-	//The three services below are addded so that we can include supportinginfo obs linked in the service request
+	//The three services below are added so that we can include SupportingInfo obs linked in the service request
 	@Autowired
 	private FhirServiceRequestService fhirServiceRequestService;
 	@Autowired
@@ -120,10 +118,10 @@ public abstract class LabCreationListener implements EventListener {
 		List<IBaseResource> labResources = labBundle.getAllResources();
 		
 		//Add requisition id (Added as an identifier on Task resource) to serviceRequest(s) in the bundle
-		//labResources = insertRequisitionIdOnServReq(labResources);
+		labResources = insertRequisitionIdOnServReq(labResources);
 
-		//Add eregister lab order number on ServiceReq on Task resource
-		labResources = insertLabOrderIdentifierToTask(labResources);
+		//Add eRegister lab order number on ServiceReq resource
+		// labResources = insertLabOrderNumberToServiceRequest(labResources);
 
         //Include the location resource in the bundle - Encounter trigger mode
 		if (!task.getLocation().isEmpty() && config.getLabUpdateTriggerObject().equals("Encounter")) {
@@ -138,7 +136,7 @@ public abstract class LabCreationListener implements EventListener {
 		}
 		
 		// Add ART Regimen, Pregnancy status, etc. Obs & DiagnosticReport (including Obs linked in DiagReport) linked on ServiceRequest
-        //(1) get task based on -- servicerequest
+        //(1) get task based on -- ServiceRequest
 		//(2) then get supporting info
 		//(3) reference to id for each item
 		//(4) Pull obs, add to lab bundle
@@ -231,10 +229,6 @@ public abstract class LabCreationListener implements EventListener {
 		return transactionBundle;
 	}
 
-
-
-	
-
 	private Coding getDISACodingFor(String name, String code) {
 		String url = "http://health.gov.ls/laboratory-services";
         return new Coding(url, code, name);
@@ -258,6 +252,7 @@ public abstract class LabCreationListener implements EventListener {
 
 	private List<IBaseResource> insertRequisitionIdOnServReq(List<IBaseResource> labResources){
 		List <Identifier> taskIdentifiers = new ArrayList<>();
+		Identifier requisitionIdentifier = null;
 		List <IBaseResource> updatedLabResources = new ArrayList<>();
 		Task taskResource = null;
 		for (IBaseResource r : labResources){
@@ -270,27 +265,23 @@ public abstract class LabCreationListener implements EventListener {
         
 		if(taskResource != null){
 			//Grab Identifier
-			taskIdentifiers = taskResource.getIdentifier();
-			Identifier requisitionIdentifier = null;
-			for(Identifier identifier : taskIdentifiers){
-				if(identifier.getSystem() == "eRegister Lab Order Number"){
-					requisitionIdentifier = identifier;
-					break;
-				}
-			}
-            
-			//Add Task to list
+			// taskIdentifiers = taskResource.getIdentifier();
+			requisitionIdentifier = taskResource.getGroupIdentifier();
+
+            //Add Task to list
 			updatedLabResources.add(taskResource);
 			//Add this identifier as requisition Id on All service requests in the list
             for (IBaseResource r : labResources){
 				Resource resource = (Resource) r;
 				if(resource instanceof ServiceRequest){
 					ServiceRequest serviceRequestResource = (ServiceRequest) resource;
-					serviceRequestResource.setRequisition(requisitionIdentifier);
+					Identifier requisitionID = new Identifier().setSystem("eRegister Lab Order Number")
+							.setValue(requisitionIdentifier.getValue());
+					serviceRequestResource.setRequisition(requisitionID);
 					updatedLabResources.add(serviceRequestResource);
 				} else {
 					if(resource instanceof Task){
-						//skip -- The mother Task resource is alrady in the list
+						//skip -- The mother Task resource is already in the list
 					} else { //leave all other resources alone (e.g. Patient, Encounter, etc.)
 						updatedLabResources.add(resource);
 					}
@@ -303,52 +294,25 @@ public abstract class LabCreationListener implements EventListener {
 		return updatedLabResources;
 	}
 
-	private List<IBaseResource> insertLabOrderIdentifierToTask(List<IBaseResource> labResources){
+	private List<IBaseResource> insertLabOrderNumberToServiceRequest(List<IBaseResource> labResources){
 		List <Identifier> taskIdentifiers = new ArrayList<Identifier>();
 		List <IBaseResource> updatedLabResources = new ArrayList<>();
 		Identifier requisitionIdentifier = null;
-		//Find service Request
-		ServiceRequest serviceRequestResource = null;
+
 		for (IBaseResource r : labResources){
 			Resource resource = (Resource) r;
-			if(resource instanceof ServiceRequest){
+			//Find service Request
+			ServiceRequest serviceRequestResource = null;
+			if(resource instanceof ServiceRequest) {
 				serviceRequestResource = (ServiceRequest) resource;
-				break;
+				//Grab eRegister Lab order number identifier (set as requisition id)
+				requisitionIdentifier = serviceRequestResource.getRequisition();
+				//Add ServiceRequest to list
+				updatedLabResources.add(serviceRequestResource);
+			} else {
+				// Add resource without modifying
+				updatedLabResources.add(resource);
 			}
-		}
-        //Grab eRegister Lab order number identifier (set as requisition id)
-		if(serviceRequestResource != null){
-			//Grab Identifier
-			requisitionIdentifier = serviceRequestResource.getRequisition();
-            
-			//Add ServiceRequest to list
-			updatedLabResources.add(serviceRequestResource);
-			//Add this identifier as additional identifier On Task resource
-			if(requisitionIdentifier != null){
-				for (IBaseResource r : labResources){
-					Resource resource = (Resource) r;
-					if(resource instanceof Task){
-						Task taskResource = (Task) resource;
-						//Take proper care as the Task identifier list is immutable
-						//Add all existing identifiers
-						for (Identifier identifier:taskResource.getIdentifier()){
-							taskIdentifiers.add(identifier);
-						}
-						taskIdentifiers.add(requisitionIdentifier);
-						taskResource.setIdentifier(taskIdentifiers);
-						updatedLabResources.add(taskResource);
-					} else {
-						if(resource instanceof ServiceRequest){
-							//skip -- The ServiceRequest resource is alrady in the list
-						} else { //leave all other resources alone (e.g. Patient, Encounter, etc.)
-							updatedLabResources.add(resource);
-						}
-						
-					}
-				}
-			}	
-		} else { //for some reason There is no ServiceRequest resource in the bundle ... then don't modify the list
-			updatedLabResources = labResources;
 		}
 		return updatedLabResources;
 	}
