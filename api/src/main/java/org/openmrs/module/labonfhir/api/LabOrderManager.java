@@ -67,6 +67,7 @@ public class LabOrderManager implements GlobalPropertyListener {
 
 			if (!isRunning.get()) {
 				Event.subscribe(Encounter.class, Event.Action.CREATED.toString(), encounterListener);
+				Event.subscribe(Encounter.class, Event.Action.UPDATED.toString(), encounterListener);
 			}
 		} else if(config.getLabUpdateTriggerObject().equals("Order")) {
 			orderListener.setDaemonToken(daemonToken);
@@ -88,6 +89,7 @@ public class LabOrderManager implements GlobalPropertyListener {
 			Event.unsubscribe(Order.class, Event.Action.CREATED, orderListener);
 		} else if (isRunning.get() && config.getLabUpdateTriggerObject().equals("Encounter")) {
 			Event.unsubscribe(Encounter.class, Event.Action.CREATED, encounterListener);
+			Event.unsubscribe(Encounter.class, Event.Action.UPDATED, encounterListener);
 		}
 		isRunning.set(false);
 	}
