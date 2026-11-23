@@ -68,6 +68,10 @@ public class LabOnFhirConfig implements ApplicationContextAware {
 
 	public static final String GP_FILTER_ORDER_BY_TEST_UUIDS = "labonfhir.filterOrderBytestUuids";
 
+	public static final String GP_ACTIVATE_PRESCRIPTION_PUSH = "labonfhir.activatePrescriptionPush";
+
+	public static final String GP_LAST_DISPENSE_FETCH = "labonfhir.prescription.lastDispenseFetch";
+
 	public enum AuthType{
 		SSL,
 		BASIC
@@ -155,6 +159,12 @@ public class LabOnFhirConfig implements ApplicationContextAware {
 	public Boolean filterOrderByTestUuuids() {
 		String filterOrders = administrationService.getGlobalProperty(GP_FILTER_ORDER_BY_TEST_UUIDS, "true");
 		return Boolean.valueOf(filterOrders);
+	}
+
+	/** Bonolo prescriptions are sent only when this and labonfhir.activateFhirPush are both true. */
+	public boolean isPrescriptionPushActive() {
+		return Boolean.parseBoolean(administrationService.getGlobalProperty(GP_ACTIVATE_PRESCRIPTION_PUSH, "false"))
+		        && Boolean.TRUE.equals(getActivateFhirPush());
 	}
 
 	public Boolean addObsAsTaskInput() {

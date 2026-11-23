@@ -6,6 +6,9 @@ import org.apache.commons.logging.Log;
 import org.apache.commons.logging.LogFactory;
 import org.hl7.fhir.r4.model.Bundle;
 import org.hl7.fhir.r4.model.Task;
+import org.openmrs.Encounter;
+import org.openmrs.api.EncounterService;
+import org.openmrs.module.labonfhir.api.prescription.PrescriptionSender;
 import org.openmrs.module.fhir2.api.FhirTaskService;
 import org.openmrs.module.labonfhir.api.event.OrderCreationListener;
 import org.openmrs.module.labonfhir.api.model.FailedTask;
@@ -44,6 +47,12 @@ public class RetryFailedTasks extends AbstractTask implements ApplicationContext
     @Autowired
 	@Qualifier("fhirR4")
 	private FhirContext ctx;
+
+    @Autowired
+    private PrescriptionSender prescriptionSender;
+
+    @Autowired
+    private EncounterService encounterService;
     
     @Override
     public void setApplicationContext(ApplicationContext applicationContext) throws BeansException {
@@ -65,6 +74,10 @@ public class RetryFailedTasks extends AbstractTask implements ApplicationContext
         List<FailedTask> failedTasks = labOnFhirService.getAllFailedTasks(false);
         
         failedTasks.forEach(failedTask -> {
+            if (FailedTask.TYPE_PRESCRIPTION.equals(failedTask.getTaskType())) {
+                retryPrescription(failedTask);
+                return;
+            }
             Task task = fhirTaskService.get(failedTask.getTaskUuid());
             if (task == null) {
                 return;
@@ -81,5 +94,22 @@ public class RetryFailedTasks extends AbstractTask implements ApplicationContext
                 log.error(e);
             }
         });
+    }
+
+    /** A failed Bonolo prescription: taskUuid is the encounter uuid. Rebuilt from current data and re-sent. */
+    private void retryPrescription(FailedTask failedTask) {
+        Encounter encounter = encounterService.getEncounterByUuid(failedTask.getTaskUuid());
+        try {
+            if (encounter == null || !prescriptionSender.sendOrThrow(encounter)) {
+                log.info("Failed prescription " + failedTask.getTaskUuid() + " has nothing to send any more");
+            } else {
+                log.info("Resent failed prescription of encounter " + failedTask.getTaskUuid());
+            }
+            failedTask.setIsSent(true);
+            labOnFhirService.saveOrUpdateFailedTask(failedTask);
+        }
+        catch (Exception e) {
+            log.error("Retry of prescription " + failedTask.getTaskUuid() + " failed", e);
+        }
     }
 }

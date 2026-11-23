@@ -132,6 +132,39 @@
         </sql>
     </changeSet>
 
+    <changeSet id="labonfhir-failed_task-add-task_type-2026-11-23" author="eregister" dbms="mysql">
+        <preConditions onFail="MARK_RAN">
+            <not><columnExists tableName="failed_task" columnName="task_type"/></not>
+        </preConditions>
+        <comment>Failed sends are either lab Tasks (LAB) or Bonolo prescriptions (PRESCRIPTION, keyed by encounter uuid)</comment>
+        <addColumn tableName="failed_task">
+            <column name="task_type" type="varchar(32)" defaultValue="LAB"/>
+        </addColumn>
+    </changeSet>
+
+    <changeSet id="labonfhir-fetch-medication-dispenses-task-2026-11-23" author="eregister" dbms="mysql">
+        <preConditions onFail="MARK_RAN">
+            <sqlCheck expectedResult="0">
+                SELECT COUNT(*) FROM scheduler_task_config
+                WHERE schedulable_class = 'org.openmrs.module.labonfhir.api.prescription.FetchMedicationDispenses'
+            </sqlCheck>
+        </preConditions>
+        <comment>Polls the HAPI server for MedicationDispense resources of Bonolo prescriptions</comment>
+        <insert tableName="scheduler_task_config">
+            <column name="name" value="Bonolo Fetch Medication Dispenses" />
+            <column name="description" value="Marks drug orders as Dispensed from MedicationDispense resources on the HAPI FHIR server" />
+            <column name="schedulable_class" value="org.openmrs.module.labonfhir.api.prescription.FetchMedicationDispenses" />
+            <column name="start_time_pattern" value="MM/dd/yyyy HH:mm:ss" />
+            <column name="start_time" valueDate="now()" />
+            <column name="repeat_interval" value="300" />
+            <column name="date_created" valueDate="CURRENT_TIMESTAMP" />
+            <column name="created_by" value="1" />
+            <column name="start_on_startup" value="1"/>
+            <column name="started" value="0"/>
+            <column name="uuid" value="5b0e2f4a-9c1d-4f6e-8a3b-2d7c1e9f0a64" />
+        </insert>
+    </changeSet>
+
     <!--
         <changeSet id="create-orders-trigger-to-test-order" author="lmphatsi" dbms="mysql">
             <preConditions onFail="MARK_RAN" onError="WARN">

@@ -132,6 +132,18 @@
 	</globalProperty>
 
 	<globalProperty>
+		<property>@MODULE_ID@.activatePrescriptionPush</property>
+		<description>Send Bonolo Health prescriptions to the FHIR server at labonfhir.lisUrl (true/false). Also requires labonfhir.activateFhirPush = true. Takes effect after a module restart.</description>
+		<defaultValue>false</defaultValue>
+	</globalProperty>
+
+	<globalProperty>
+		<property>@MODULE_ID@.prescription.lastDispenseFetch</property>
+		<description>Set by the 'Bonolo Fetch Medication Dispenses' task: the end of the last MedicationDispense poll (ISO date-time). Clear it to re-read all dispenses.</description>
+		<defaultValue></defaultValue>
+	</globalProperty>
+
+	<globalProperty>
 		<property>@MODULE_ID@.filterOrderBytestUuids</property>
 		<description>Allows filtering Oders by Test Uuuids</description>
 		<defaultValue>true</defaultValue>
