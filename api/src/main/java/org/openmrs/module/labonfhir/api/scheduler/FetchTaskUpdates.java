@@ -205,7 +205,8 @@ public class FetchTaskUpdates extends AbstractTask implements ApplicationContext
 		this.stopExecuting();
 	}
 
-	private void updateTasksInBundle(List<Bundle> taskBundles) {
+	// package-private for testing
+	void updateTasksInBundle(List<Bundle> taskBundles) {
 		for (Bundle bundle : taskBundles) {
 			for (Iterator tasks = bundle.getEntry().iterator(); tasks.hasNext();) {
 				String openmrsTaskUuid = null;
@@ -220,14 +221,18 @@ public class FetchTaskUpdates extends AbstractTask implements ApplicationContext
 					// Only update if matching OpenMRS Task found
 					if (openmrsTask != null) {
 						// Handle status
+						Task.TaskStatus previousStatus = openmrsTask.getStatus();
 						openmrsTask.setStatus(openelisTask.getStatus());
-						
+						boolean statusChanged = previousStatus != openmrsTask.getStatus();
+
 						Boolean taskOutPutUpdated = false;
 						if (openelisTask.hasOutput()) {
 							// openmrsTask.setOutput(openelisTask.getOutput());
 							taskOutPutUpdated = updateOutput(openelisTask.getOutput(), openmrsTask);
 						}
-						if (taskOutPutUpdated) {
+						// Save a status change even when no new output was added, otherwise the
+						// local Task stays 'requested' although the LIS has completed it
+						if (taskOutPutUpdated || statusChanged) {
 							taskService.update(openmrsTaskUuid, openmrsTask);
 						}
 					}
