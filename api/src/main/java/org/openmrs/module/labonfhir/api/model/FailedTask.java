@@ -25,6 +25,14 @@ public class FailedTask extends BaseOpenmrsData {
 	@Column(name = "is_sent")
 	private boolean isSent;
 
+	public static final String TYPE_LAB = "LAB";
+
+	public static final String TYPE_PRESCRIPTION = "PRESCRIPTION";
+
+	/** LAB: taskUuid is a Task UUID. PRESCRIPTION: taskUuid is the UUID of the prescription's encounter. */
+	@Column(name = "task_type", length = 32)
+	private String taskType = TYPE_LAB;
+
     @Override
     public Integer getId() {
         return id;
@@ -48,6 +56,14 @@ public class FailedTask extends BaseOpenmrsData {
     
     public void setIsSent(boolean isSent) {
         this.isSent = isSent;
+    }
+
+    public String getTaskType() {
+        return taskType == null ? TYPE_LAB : taskType;
+    }
+
+    public void setTaskType(String taskType) {
+        this.taskType = taskType;
     }
     
     public String getTaskUuid() {

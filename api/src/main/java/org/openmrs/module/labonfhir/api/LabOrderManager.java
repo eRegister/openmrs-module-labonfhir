@@ -10,6 +10,7 @@ import org.openmrs.api.GlobalPropertyListener;
 import org.openmrs.event.Event;
 import org.openmrs.module.DaemonToken;
 import org.openmrs.module.labonfhir.LabOnFhirConfig;
+import org.openmrs.module.labonfhir.api.prescription.PrescriptionEncounterListener;
 import org.openmrs.module.labonfhir.api.event.EncounterCreationListener;
 import org.openmrs.module.labonfhir.api.event.OrderCreationListener;
 import org.slf4j.Logger;
@@ -39,6 +40,11 @@ public class LabOrderManager implements GlobalPropertyListener {
 
 	private final AtomicBoolean isRunning = new AtomicBoolean(false);
 
+	@Autowired
+	private PrescriptionEncounterListener prescriptionListener;
+
+	private final AtomicBoolean prescriptionsRunning = new AtomicBoolean(false);
+
 	@Override
 	public boolean supportsPropertyName(String propertyName) {
 		return LabOnFhirConfig.GP_LIS_URL.equals(propertyName);
@@ -61,6 +67,7 @@ public class LabOrderManager implements GlobalPropertyListener {
 	}
 
 	public void enableLisConnector() {
+		enablePrescriptionPush();
 		log.info("Enabling LIS FHIR Connector for "+config.getLabUpdateTriggerObject());
 		if(config.getLabUpdateTriggerObject().equals("Encounter")) {
 			encounterListener.setDaemonToken(daemonToken);
@@ -82,7 +89,27 @@ public class LabOrderManager implements GlobalPropertyListener {
 		isRunning.set(true);
 	}
 
+	/** Bonolo prescriptions: independent of the lab trigger mode; needs labonfhir.activatePrescriptionPush = true. */
+	private void enablePrescriptionPush() {
+		if (!config.isPrescriptionPushActive() || prescriptionsRunning.get()) {
+			return;
+		}
+		log.info("Enabling Bonolo prescription push");
+		prescriptionListener.setDaemonToken(daemonToken);
+		Event.subscribe(Encounter.class, Event.Action.CREATED.toString(), prescriptionListener);
+		Event.subscribe(Encounter.class, Event.Action.UPDATED.toString(), prescriptionListener);
+		prescriptionsRunning.set(true);
+	}
+
+	private void disablePrescriptionPush() {
+		if (prescriptionsRunning.getAndSet(false)) {
+			Event.unsubscribe(Encounter.class, Event.Action.CREATED, prescriptionListener);
+			Event.unsubscribe(Encounter.class, Event.Action.UPDATED, prescriptionListener);
+		}
+	}
+
 	public void disableLisConnector() {
+		disablePrescriptionPush();
 		log.info("Disabling LIS FHIR Connector");
 		if (isRunning.get() && config.getLabUpdateTriggerObject().equals("Order")) {
 			Event.unsubscribe(Order.class, Event.Action.CREATED, orderListener);
