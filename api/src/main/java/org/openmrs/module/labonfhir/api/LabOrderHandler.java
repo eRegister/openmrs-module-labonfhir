@@ -4,6 +4,7 @@ import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
 import java.util.List;
+import java.util.Objects;
 import java.util.Optional;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.stream.Collectors;
@@ -14,6 +15,7 @@ import org.openmrs.Encounter;
 import org.openmrs.EncounterProvider;
 import org.openmrs.Obs;
 import org.openmrs.Order;
+import org.openmrs.Provider;
 import org.openmrs.api.db.DAOException;
 import org.openmrs.module.fhir2.FhirConstants;
 import org.openmrs.module.fhir2.api.FhirObservationService;
@@ -90,16 +92,12 @@ public class LabOrderHandler {
 
 		Reference encounterRef = newReference(order.getEncounter().getUuid(), FhirConstants.ENCOUNTER);
 
-		Optional<EncounterProvider> requesterProvider = order.getEncounter().getActiveEncounterProviders().stream()
-				.findFirst();
-
-		Reference requesterRef = requesterProvider.map(
-				encounterProvider -> newReference(encounterProvider.getUuid(), FhirConstants.PRACTITIONER)).orElse(null);
+		Reference requesterRef = requesterReference(order.getEncounter());
 
 		// Create Task Resource for given Order
 		Task newTask = createTask(basedOnRefs, forReference, ownerRef, encounterRef ,taskInputs);
 
-		if (order.getEncounter().getActiveEncounterProviders().isEmpty()) {
+		if (requesterRef != null) {
 			newTask.setRequester(requesterRef);
 		}
 
@@ -164,11 +162,7 @@ public class LabOrderHandler {
 
             Reference locationRef = newReference(encounter.getLocation().getUuid(), FhirConstants.LOCATION);
 
-            Optional<EncounterProvider> requesterProvider = encounter.getActiveEncounterProviders().stream().findFirst();
-
-            Reference requesterRef = requesterProvider.isPresent() ?
-                    newReference(requesterProvider.get().getUuid(), FhirConstants.PRACTITIONER) :
-                    null;
+            Reference requesterRef = requesterReference(encounter);
 
             List<Task.ParameterComponent> taskInputs = null;
             if (config.addObsAsTaskInput()) {
@@ -186,7 +180,7 @@ public class LabOrderHandler {
             Task newTask = createTask(basedOnRefs, forReference, ownerRef, encounterRef, taskInputs);
             newTask.setLocation(locationRef);
 
-            if (!encounter.getActiveEncounterProviders().isEmpty()) {
+            if (requesterRef != null) {
                 newTask.setRequester(requesterRef);
             }
 
@@ -199,6 +193,21 @@ public class LabOrderHandler {
             return newTask;
         }
     }
+
+	/**
+	 * The Practitioner that requested the order: the provider of the encounter's first active encounter
+	 * provider. FHIR2 serves Practitioners by provider UUID, so the reference must use the provider's UUID,
+	 * not the encounter_provider row's UUID.
+	 *
+	 * @return the reference, or null if the encounter has no active provider
+	 */
+	private Reference requesterReference(Encounter encounter) {
+		Optional<Provider> provider = encounter.getActiveEncounterProviders().stream()
+				.map(EncounterProvider::getProvider)
+				.filter(Objects::nonNull)
+				.findFirst();
+		return provider.map(p -> newReference(p.getUuid(), FhirConstants.PRACTITIONER)).orElse(null);
+	}
 
 	private Reference newReference(String uuid, String type) {
 		return new Reference().setReference(type + "/" + uuid).setType(type);
