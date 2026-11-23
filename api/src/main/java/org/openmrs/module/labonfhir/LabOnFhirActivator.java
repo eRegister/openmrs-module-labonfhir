@@ -13,6 +13,7 @@ import lombok.SneakyThrows;
 
 import java.util.Optional;
 
+import org.apache.commons.lang3.StringUtils;
 import org.openmrs.PatientIdentifierType;
 import org.openmrs.api.PatientService;
 import org.openmrs.module.BaseModuleActivator;
@@ -86,21 +87,35 @@ public class LabOnFhirActivator extends BaseModuleActivator implements Applicati
 		this.daemonToken = token;
 	}
 	
-	private void createFhirPatientIdentierSystem() {
-		PatientIdentifierType pidType = patientService
-				.getPatientIdentifierTypeByUuid(config.getPatientIdentifierUuid().trim());
+	// package-private for testing
+	void createFhirPatientIdentierSystem() {
+		String pidTypeUuid = config.getPatientIdentifierUuid();
+		String systemUrl = config.getLisIdentifierSystemUrl();
+		if (StringUtils.isBlank(pidTypeUuid) || StringUtils.isBlank(systemUrl)) {
+			log.warn("Not registering the LIS patient identifier system: labonfhir.openmrsPatientIdentifier.uuid "
+					+ "or labonfhir.lisIdentifierSystem.url is not set");
+			return;
+		}
+
+		PatientIdentifierType pidType = patientService.getPatientIdentifierTypeByUuid(pidTypeUuid.trim());
+		// Without this check a row with no identifier type was inserted on every module start
+		if (pidType == null) {
+			log.warn("Not registering the LIS patient identifier system: no patient identifier type has uuid '{}' "
+					+ "(global property labonfhir.openmrsPatientIdentifier.uuid)", pidTypeUuid.trim());
+			return;
+		}
 
 		Optional<FhirPatientIdentifierSystem> existingIdSystem = fhirPatientIdentifierSystemService
 				.getFhirPatientIdentifierSystem(pidType);
 		if (existingIdSystem.isPresent()) {
 			existingIdSystem.get().setPatientIdentifierType(pidType);
-			existingIdSystem.get().setUrl(config.getLisIdentifierSystemUrl().trim());
+			existingIdSystem.get().setUrl(systemUrl.trim());
 			fhirPatientIdentifierSystemService.saveFhirPatientIdentifierSystem(existingIdSystem.get());
 		} else {
 			FhirPatientIdentifierSystem idSystem = new FhirPatientIdentifierSystem();
 			idSystem.setName("OpenLIS ID System");
 			idSystem.setPatientIdentifierType(pidType);
-			idSystem.setUrl(config.getLisIdentifierSystemUrl().trim());
+			idSystem.setUrl(systemUrl.trim());
 			fhirPatientIdentifierSystemService.saveFhirPatientIdentifierSystem(idSystem);
 		}
 	}
