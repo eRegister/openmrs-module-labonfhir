@@ -1,40 +1,36 @@
 package org.openmrs.module.labonfhir.api.scheduler;
 
 import static org.hamcrest.MatcherAssert.assertThat;
-import static org.hamcrest.Matchers.hasSize;
-import static org.hamcrest.Matchers.notNullValue;
-import static org.hamcrest.Matchers.nullValue;
+import static org.hamcrest.Matchers.equalTo;
+import static org.mockito.Matchers.any;
+import static org.mockito.Matchers.anyString;
+import static org.mockito.Matchers.eq;
+import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 import java.util.Collections;
 
-import ca.uhn.fhir.context.FhirContext;
-import ca.uhn.fhir.rest.client.api.IRestfulClientFactory;
 import org.hl7.fhir.r4.model.Bundle;
-import org.hl7.fhir.r4.model.Reference;
 import org.hl7.fhir.r4.model.Task;
 import org.junit.Before;
 import org.junit.Test;
 import org.junit.runner.RunWith;
-import org.mockito.Matchers;
+import org.mockito.ArgumentCaptor;
 import org.mockito.Mock;
 import org.mockito.runners.MockitoJUnitRunner;
 import org.openmrs.module.fhir2.api.FhirTaskService;
-import org.springframework.stereotype.Component;
 
 @RunWith(MockitoJUnitRunner.class)
-@Component
 public class FetchTaskUpdatesTest {
 
 	private static final String OPENMRS_TASK_UUID = "44fdc8ad-fe4d-499b-93a8-8a991c1d477e";
 
 	private static final String OPENELIS_TASK_UUID = "55fdc8ad-fe4d-499b-93a8-8a991c1d4788";
 
+	private static final String TASK_IDENTIFIER_SYSTEM = "http://fhir.openmrs.org/ext/task/identifier";
 
 	private FetchTaskUpdates updateTask;
-
-	@Mock
-	private Bundle taskBundle;
 
 	@Mock
 	private FhirTaskService taskService;
@@ -42,37 +38,53 @@ public class FetchTaskUpdatesTest {
 	@Before
 	public void setup() {
 		updateTask = new FetchTaskUpdates();
-
 		updateTask.setTaskService(taskService);
 	}
 
-	@Test
-	public void updateTasksInBundle_shouldUpdateTasks() {
-		Task openelisTask = new Task();
-		Task openmrsTask = new Task();
-		Task updatedOpenmrsTask = new Task();
+	private Bundle bundleWithLisTask(Task.TaskStatus status) {
+		Task lisTask = new Task();
+		lisTask.setId(OPENELIS_TASK_UUID);
+		lisTask.setStatus(status);
+		lisTask.addIdentifier().setSystem(TASK_IDENTIFIER_SYSTEM).setValue(OPENMRS_TASK_UUID);
 
-		openmrsTask.setId(OPENMRS_TASK_UUID);
-		openmrsTask.setStatus(Task.TaskStatus.REQUESTED);
-
-		updatedOpenmrsTask.setId(OPENMRS_TASK_UUID);
-		updatedOpenmrsTask.setStatus(Task.TaskStatus.ACCEPTED);
-
-		openelisTask.setId(OPENELIS_TASK_UUID);
-		openmrsTask.setStatus(Task.TaskStatus.ACCEPTED);
-
-		openelisTask.setBasedOn(Collections.singletonList(new Reference().setReference("Task/"+OPENMRS_TASK_UUID)));
-
-		Bundle.BundleEntryComponent bec = new Bundle.BundleEntryComponent().setResource(openelisTask);
-
-		when(taskBundle.getEntry()).thenReturn(Collections.singletonList(bec));
-		when(taskService.get(OPENMRS_TASK_UUID)).thenReturn(openelisTask);
-		when(taskService.update(Matchers.eq(OPENMRS_TASK_UUID), Matchers.any(Task.class))).thenReturn(updatedOpenmrsTask);
-
-		// Collection<Task> result = updateTask.updateTasksInBundle(taskBundle);
-
-		// assertThat(result, hasSize(1));
-
+		Bundle bundle = new Bundle();
+		bundle.addEntry().setResource(lisTask);
+		return bundle;
 	}
 
+	private Task openmrsTask(Task.TaskStatus status) {
+		Task task = new Task();
+		task.setId(OPENMRS_TASK_UUID);
+		task.setStatus(status);
+		return task;
+	}
+
+	@Test
+	public void updateTasksInBundle_shouldSaveStatusChangeWithoutNewOutput() {
+		when(taskService.get(OPENMRS_TASK_UUID)).thenReturn(openmrsTask(Task.TaskStatus.REQUESTED));
+
+		updateTask.updateTasksInBundle(Collections.singletonList(bundleWithLisTask(Task.TaskStatus.COMPLETED)));
+
+		ArgumentCaptor<Task> saved = ArgumentCaptor.forClass(Task.class);
+		verify(taskService).update(eq(OPENMRS_TASK_UUID), saved.capture());
+		assertThat(saved.getValue().getStatus(), equalTo(Task.TaskStatus.COMPLETED));
+	}
+
+	@Test
+	public void updateTasksInBundle_shouldNotSaveWhenNothingChanged() {
+		when(taskService.get(OPENMRS_TASK_UUID)).thenReturn(openmrsTask(Task.TaskStatus.COMPLETED));
+
+		updateTask.updateTasksInBundle(Collections.singletonList(bundleWithLisTask(Task.TaskStatus.COMPLETED)));
+
+		verify(taskService, never()).update(anyString(), any(Task.class));
+	}
+
+	@Test
+	public void updateTasksInBundle_shouldIgnoreTasksNotFoundInOpenmrs() {
+		when(taskService.get(OPENMRS_TASK_UUID)).thenReturn(null);
+
+		updateTask.updateTasksInBundle(Collections.singletonList(bundleWithLisTask(Task.TaskStatus.COMPLETED)));
+
+		verify(taskService, never()).update(anyString(), any(Task.class));
+	}
 }
